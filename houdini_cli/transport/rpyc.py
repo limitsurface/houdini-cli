@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import rpyc
+from rpyc.utils.classic import obtain
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,11 @@ logger = logging.getLogger(__name__)
 class HoudiniSession:
     connection: Any
     hou: Any
+
+
+def localize(value: Any) -> Any:
+    """Convert remote RPyC netrefs into local Python objects."""
+    return obtain(value)
 
 
 @contextlib.contextmanager

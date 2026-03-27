@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ..format.envelopes import success_result
-from ..transport.rpyc import connect
+from ..transport.rpyc import connect, localize
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -19,7 +19,7 @@ def handle_ping(args: argparse.Namespace) -> dict:
             {
                 "host": args.host,
                 "port": args.port,
-                "houdini_version": session.hou.applicationVersionString(),
-                "hip_file": session.hou.hipFile.path(),
+                "houdini_version": localize(session.hou.applicationVersionString()),
+                "hip_file": localize(session.hou.hipFile.path()),
             }
         )
