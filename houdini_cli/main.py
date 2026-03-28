@@ -8,6 +8,7 @@ import logging
 import sys
 from collections.abc import Sequence
 
+from .commands import attrib
 from .commands import eval as eval_command
 from .commands import node
 from .commands import parm
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_command.register_parser(subparsers)
     parm.register_parser(subparsers)
     node.register_parser(subparsers)
+    attrib.register_parser(subparsers)
 
     return parser
 

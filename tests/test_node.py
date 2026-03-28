@@ -25,12 +25,17 @@ class FakeNode:
         self._name = name
         self.destroyed = False
         self.created = None
+        self.parent_node = None
+        self.selected_calls = []
 
     def path(self):
         return self._path
 
     def name(self):
         return self._name
+
+    def parent(self):
+        return self.parent_node
 
     def type(self):
         return FakeNodeType()
@@ -60,14 +65,45 @@ class FakeNode:
     def destroy(self):
         self.destroyed = True
 
+    def setSelected(self, selected, clear_all_selected=False):
+        self.selected_calls.append((selected, clear_all_selected))
+
+
+class FakeNetworkEditor:
+    def __init__(self) -> None:
+        self.pwd_node = None
+        self.current_node = None
+        self.framed = False
+        self.cleared = False
+
+    def setPwd(self, node):
+        self.pwd_node = node
+
+    def setCurrentNode(self, node):
+        self.current_node = node
+
+    def frameSelection(self):
+        self.framed = True
+
+    def clearAllSelected(self):
+        self.cleared = True
+
 
 class FakeSession:
-    def __init__(self, nodes: dict[str, FakeNode]) -> None:
+    def __init__(self, nodes: dict[str, FakeNode], pane_tabs=None) -> None:
         self.hou = self
         self.nodes = nodes
+        self._pane_tabs = pane_tabs or []
+        self.ui = self
 
     def node(self, path):
         return self.nodes.get(path)
+
+    def isUIAvailable(self):
+        return True
+
+    def paneTabs(self):
+        return self._pane_tabs
 
 
 class FakeConnect:
@@ -207,3 +243,124 @@ def test_handle_set_section_full(monkeypatch) -> None:
 def test_missing_node_raises() -> None:
     with pytest.raises(ValueError, match="Node not found"):
         node_common.get_node(FakeSession({}), "/obj/missing")
+
+
+def test_handle_nav(monkeypatch) -> None:
+    network = FakeNode("/obj/geo1", "geo1")
+    box = FakeNode("/obj/geo1/box1", "box1")
+    null = FakeNode("/obj/geo1/null1", "null1")
+    box.parent_node = network
+    null.parent_node = network
+    editor = FakeNetworkEditor()
+
+    monkeypatch.setattr(
+        node,
+        "connect",
+        FakeConnect(
+            FakeSession(
+                {
+                    "/obj/geo1": network,
+                    "/obj/geo1/box1": box,
+                    "/obj/geo1/null1": null,
+                },
+                pane_tabs=[editor],
+            )
+        ),
+    )
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_nav(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_paths=["/obj/geo1/box1", "/obj/geo1/null1"],
+            no_frame=False,
+            no_select=False,
+            no_current=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["network"] == "/obj/geo1"
+    assert result["data"]["current"] == "/obj/geo1/null1"
+    assert editor.pwd_node is network
+    assert editor.current_node is null
+    assert editor.framed is True
+    assert box.selected_calls == [(True, True)]
+    assert null.selected_calls == [(True, False)]
+
+
+def test_handle_nav_requires_same_parent(monkeypatch) -> None:
+    network_a = FakeNode("/obj/geo1", "geo1")
+    network_b = FakeNode("/obj/geo2", "geo2")
+    box = FakeNode("/obj/geo1/box1", "box1")
+    null = FakeNode("/obj/geo2/null1", "null1")
+    box.parent_node = network_a
+    null.parent_node = network_b
+    editor = FakeNetworkEditor()
+
+    monkeypatch.setattr(
+        node,
+        "connect",
+        FakeConnect(
+            FakeSession(
+                {
+                    "/obj/geo1/box1": box,
+                    "/obj/geo2/null1": null,
+                },
+                pane_tabs=[editor],
+            )
+        ),
+    )
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    with pytest.raises(ValueError, match="same parent"):
+        node.handle_nav(
+            Namespace(
+                host="localhost",
+                port=18811,
+                node_paths=["/obj/geo1/box1", "/obj/geo2/null1"],
+                no_frame=False,
+                no_select=False,
+                no_current=False,
+            )
+        )
+
+
+def test_handle_nav_without_selection_clears_after_frame(monkeypatch) -> None:
+    network = FakeNode("/obj/geo1", "geo1")
+    box = FakeNode("/obj/geo1/box1", "box1")
+    box.parent_node = network
+    editor = FakeNetworkEditor()
+
+    monkeypatch.setattr(
+        node,
+        "connect",
+        FakeConnect(
+            FakeSession(
+                {
+                    "/obj/geo1": network,
+                    "/obj/geo1/box1": box,
+                },
+                pane_tabs=[editor],
+            )
+        ),
+    )
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_nav(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_paths=["/obj/geo1/box1"],
+            no_frame=False,
+            no_select=True,
+            no_current=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["selected"] is False
+    assert result["data"]["current"] is None
+    assert editor.framed is True
+    assert editor.cleared is True

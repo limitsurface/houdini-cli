@@ -202,6 +202,48 @@ This is especially important for:
 - traversal defaults
 - future error handling policy
 
+## Observation 7: Some Houdini Enum-Like Results Should Be Stringified, Not Localized
+
+When reading attribute metadata through `hrpyc`, calling `obtain()` on:
+
+- `hou.Attrib.dataType()`
+
+failed with:
+
+- `cannot pickle 'SwigPyObject' object`
+
+Stringifying the returned enum-like value on the remote object boundary worked reliably.
+
+### Implication
+
+Attribute inspection should avoid broad localization even for small Houdini enum objects.
+
+Prefer:
+
+- extracting primitive fields directly
+- converting enum-like values with `str(...)` when needed
+
+This is similar in spirit to the broader SWIG pickling issue seen during traversal, but it matters specifically for metadata reads as well.
+
+## Observation 8: Remote Slicing Of Houdini Tuple Generators Is Unreliable
+
+During live attribute sampling, slicing:
+
+- `geometry.iterPoints()[:limit]`
+
+failed over `hrpyc` with a remote type error from Houdini's tuple generator wrapper.
+
+Manual iteration up to the limit worked.
+
+### Implication
+
+For remote HOM iteration through `hrpyc`:
+
+- do not assume tuple generators support normal Python slicing
+- prefer manual iteration when taking capped samples
+
+This affects any future command that samples points, prims, vertices, or similar generator-backed collections.
+
 ## Guidance For The Future Skill
 
 The eventual minimal skill should likely teach the agent:
@@ -213,6 +255,8 @@ The eventual minimal skill should likely teach the agent:
 - prefer stdin for complex JSON payloads
 - do not assume parameter data is always scalar or dict-shaped
 - do not assume every node section returns data
+- do not assume Houdini generator objects slice cleanly over `hrpyc`
+- do not broadly localize Houdini enum/SWIG-backed metadata objects
 
 ## Guidance For CLI Help
 
@@ -222,6 +266,7 @@ The CLI help should explicitly mention at least:
 - stdin recommendation for complex JSON input
 - `parm get` may return tuple-shaped data
 - `node get --section parms` may return `null`
+- `attrib get` is capped by default unless narrowed with `--element`
 
 These are important enough to document close to the commands themselves.
 
