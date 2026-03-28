@@ -166,7 +166,6 @@ def test_handle_get_sampled_values(monkeypatch) -> None:
             attrib_class="point",
             element=None,
             limit=2,
-            stats=None,
         )
     )
 
@@ -189,7 +188,6 @@ def test_handle_get_specific_element(monkeypatch) -> None:
             attrib_class="point",
             element=1,
             limit=10,
-            stats=None,
         )
     )
 
@@ -212,58 +210,11 @@ def test_handle_get_detail_value(monkeypatch) -> None:
             attrib_class="detail",
             element=None,
             limit=10,
-            stats="min,max",
         )
     )
 
     assert result["ok"] is True
     assert result["data"]["value"] == 7
-    assert result["data"]["stats"] == {"min": 7.0, "max": 7.0}
-
-
-def test_handle_get_numeric_stats(monkeypatch) -> None:
-    geometry = FakeGeometry()
-    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
-    monkeypatch.setattr(attrib, "localize", lambda value: value)
-
-    result = attrib.handle_get(
-        Namespace(
-            host="localhost",
-            port=18811,
-            node_path="/obj/geo1/OUT",
-            attrib_name="P",
-            attrib_class="point",
-            element=None,
-            limit=2,
-            stats="min,max,mean,median",
-        )
-    )
-
-    assert result["ok"] is True
-    assert result["data"]["stats"]["min"] == [0.0, 0.0, 0.0]
-    assert result["data"]["stats"]["max"] == [2.0, 0.0, 0.0]
-    assert result["data"]["stats"]["mean"] == [1.0, 0.0, 0.0]
-    assert result["data"]["stats"]["median"] == [1.0, 0.0, 0.0]
-
-
-def test_handle_get_rejects_non_numeric_stats(monkeypatch) -> None:
-    geometry = FakeGeometry()
-    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
-    monkeypatch.setattr(attrib, "localize", lambda value: value)
-
-    with pytest.raises(ValueError, match="numeric attributes"):
-        attrib.handle_get(
-            Namespace(
-                host="localhost",
-                port=18811,
-                node_path="/obj/geo1/OUT",
-                attrib_name="name",
-                attrib_class="prim",
-                element=None,
-                limit=10,
-                stats="min",
-            )
-        )
 
 
 def test_handle_get_rejects_detail_element(monkeypatch) -> None:
@@ -273,17 +224,16 @@ def test_handle_get_rejects_detail_element(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="Detail attributes do not accept --element"):
         attrib.handle_get(
-            Namespace(
-                host="localhost",
-                port=18811,
-                node_path="/obj/geo1/OUT",
-                attrib_name="iteration",
-                attrib_class="detail",
-                element=0,
-                limit=10,
-                stats=None,
-            )
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/OUT",
+            attrib_name="iteration",
+            attrib_class="detail",
+            element=0,
+            limit=10,
         )
+    )
 
 
 def test_handle_get_missing_geometry(monkeypatch) -> None:

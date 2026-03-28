@@ -82,7 +82,6 @@ Optional arguments:
 
 - `--element N`
 - `--limit N`
-- `--stats min,max,mean,median`
 
 `--element` is important and should be first-class.
 
@@ -146,66 +145,17 @@ Example:
 
 This should be treated as a safe starting point, not a permanent contract.
 
-## Attribute Statistics
+## Aggregate Stats
 
-It is worth supporting a small set of common aggregate operations for numeric attributes.
+Aggregate stats are intentionally deferred.
 
-This is useful because the agent often needs to understand an attribute distribution without pulling many raw values.
+Reason:
 
-Suggested flag:
+- scanning large geometry through `hrpyc` is slow
+- remote per-element iteration is transport-heavy
+- live testing exposed unstable behavior in the remote inspection path
 
-```text
-houdini-cli attrib get /obj/geo1/OUT pscale --class point --stats min,max,mean,median
-```
-
-Suggested support:
-
-- `min`
-- `max`
-- `mean`
-- `median`
-
-This should only apply to numeric attributes:
-
-- ints
-- floats
-
-For non-numeric attributes, reject stats cleanly or return a clear unsupported error.
-
-For vector-valued numeric attributes, the implementation should choose one of two behaviors and document it clearly:
-
-- compute per-component stats
-- require a future explicit component selector
-
-V1 should prefer per-component stats if it is simple and unambiguous.
-
-Example:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "node": "/obj/geo1/OUT",
-    "attribute": {
-      "name": "pscale",
-      "class": "point",
-      "size": 1,
-      "data_type": "float"
-    },
-    "stats": {
-      "min": 0.02,
-      "max": 1.4,
-      "mean": 0.31,
-      "median": 0.28
-    }
-  }
-}
-```
-
-The important rule is:
-
-- use stats when the agent wants distribution information
-- use raw values only for a sample or a specific element
+For now, if aggregate attribute analysis is needed, prefer SOP/VEX-side workflows instead of doing it through the CLI transport.
 
 ## Implementation Notes
 
@@ -229,7 +179,6 @@ Handle these clearly:
 - attribute not found
 - invalid class
 - element out of range
-- unsupported stats request for non-numeric attributes
 
 ## Design Rules
 
@@ -239,7 +188,6 @@ Handle these clearly:
 - support direct element addressing
 - no giant arrays by default
 - capped reads even for one attribute
-- lightweight numeric stats preferred over large raw samples when possible
 
 ## Non-Goals
 
@@ -249,4 +197,5 @@ Not in V1:
 - attribute writing
 - spreadsheet-like pagination
 - multi-attribute queries in one command
+- aggregate stats over live geometry
 - non-geometry domains unless a real need emerges

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import statistics
 from typing import Any
 
 from ..format.envelopes import success_result
@@ -12,7 +11,6 @@ from .node_common import get_node
 
 DEFAULT_LIMIT = 10
 VALID_CLASSES = ("point", "prim", "vertex", "detail")
-VALID_STATS = ("min", "max", "mean", "median")
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -49,10 +47,6 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         type=int,
         default=DEFAULT_LIMIT,
         help=f"Maximum sampled elements when --element is omitted (default: {DEFAULT_LIMIT}).",
-    )
-    get_parser.add_argument(
-        "--stats",
-        help="Comma-separated numeric stats: min,max,mean,median",
     )
     get_parser.set_defaults(handler=handle_get)
 
@@ -178,63 +172,6 @@ def _value_from_element(element: Any, attrib: Any) -> Any:
     return localize(element.attribValue(attrib))
 
 
-def _all_values(geometry: Any, attrib_class: str, attrib: Any) -> list[Any]:
-    return [_value_from_element(element, attrib) for _, element in _sample_elements(geometry, attrib_class, _element_count(geometry, attrib_class))]
-
-
-def _normalize_numeric_sample(value: Any) -> list[float]:
-    if isinstance(value, bool):
-        return [float(value)]
-    if isinstance(value, (int, float)):
-        return [float(value)]
-    if isinstance(value, (list, tuple)) and all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value):
-        return [float(item) for item in value]
-    raise ValueError("Stats are only supported for numeric attributes")
-
-
-def _compute_stats(values: list[Any], requested_stats: list[str]) -> dict:
-    numeric_values = [_normalize_numeric_sample(value) for value in values]
-    if not numeric_values:
-        return {}
-
-    width = len(numeric_values[0])
-    for sample in numeric_values:
-        if len(sample) != width:
-            raise ValueError("Stats require a consistent numeric tuple size")
-
-    stats: dict[str, Any] = {}
-    for stat_name in requested_stats:
-        components = []
-        for component_index in range(width):
-            component_values = [sample[component_index] for sample in numeric_values]
-            if stat_name == "min":
-                components.append(min(component_values))
-            elif stat_name == "max":
-                components.append(max(component_values))
-            elif stat_name == "mean":
-                components.append(statistics.fmean(component_values))
-            else:
-                components.append(statistics.median(component_values))
-        stats[stat_name] = components[0] if width == 1 else components
-    return stats
-
-
-def _parse_stats(raw_stats: str | None) -> list[str]:
-    if not raw_stats:
-        return []
-
-    requested_stats = []
-    for raw_name in raw_stats.split(","):
-        name = raw_name.strip().lower()
-        if not name:
-            continue
-        if name not in VALID_STATS:
-            raise ValueError(f"Unsupported stat: {name}")
-        if name not in requested_stats:
-            requested_stats.append(name)
-    return requested_stats
-
-
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = get_node(session, args.node_path)
@@ -251,8 +188,6 @@ def handle_list(args: argparse.Namespace) -> dict:
 
 
 def handle_get(args: argparse.Namespace) -> dict:
-    requested_stats = _parse_stats(args.stats)
-
     with connect(args.host, args.port) as session:
         node = get_node(session, args.node_path)
         geometry = _get_geometry(node)
@@ -269,32 +204,23 @@ def handle_get(args: argparse.Namespace) -> dict:
         if args.attrib_class == "detail":
             if args.element is not None:
                 raise ValueError("Detail attributes do not accept --element")
-            values = [localize(geometry.attribValue(attrib))]
-            data["value"] = values[0]
+            data["value"] = localize(geometry.attribValue(attrib))
         elif args.element is not None:
             element = _element_at(geometry, args.attrib_class, args.element)
             data["value"] = {
                 "element": args.element,
                 "value": _value_from_element(element, attrib),
             }
-            values = [data["value"]["value"]]
         else:
             sampled = _sample_elements(geometry, args.attrib_class, args.limit)
             data["values"] = [
                 {"element": index, "value": _value_from_element(element, attrib)}
                 for index, element in sampled
             ]
-            values = [item["value"] for item in data["values"]]
             meta = {
                 "limit": args.limit,
                 "truncated": count > args.limit,
                 "total_elements": count,
             }
-
-        if requested_stats:
-            stats_values = values if args.element is not None or args.attrib_class == "detail" else _all_values(
-                geometry, args.attrib_class, attrib
-            )
-            data["stats"] = _compute_stats(stats_values, requested_stats)
 
         return success_result(data, meta=meta)

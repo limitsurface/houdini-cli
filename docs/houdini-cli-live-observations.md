@@ -244,6 +244,31 @@ For remote HOM iteration through `hrpyc`:
 
 This affects any future command that samples points, prims, vertices, or similar generator-backed collections.
 
+## Observation 9: Full-Geometry Attribute Stats Over `hrpyc` Are Not Safe Enough
+
+While testing aggregate attribute stats on dense geometry, the remote path:
+
+- timed out under heavy per-element traversal
+- then exposed an `rpyc` inspect/docstring path that crashed Houdini's embedded Python process
+
+The fatal stack included:
+
+- `rpyc.core.protocol._handle_inspect`
+- `inspect.getdoc`
+- `shibokensupport.signature.loader.make_helptext`
+
+### Implication
+
+The CLI should not try to compute full-geometry attribute stats through remote Python iteration.
+
+For now:
+
+- keep attribute reads sample-first
+- support explicit `--element` reads
+- defer aggregate stats to SOP/VEX-side workflows
+
+Even if the underlying hard crash is in Houdini/rpyc internals, this is still a CLI design boundary we should respect.
+
 ## Guidance For The Future Skill
 
 The eventual minimal skill should likely teach the agent:
@@ -257,6 +282,7 @@ The eventual minimal skill should likely teach the agent:
 - do not assume every node section returns data
 - do not assume Houdini generator objects slice cleanly over `hrpyc`
 - do not broadly localize Houdini enum/SWIG-backed metadata objects
+- do not attempt heavy aggregate geometry analysis over `hrpyc` when a SOP/VEX path is available
 
 ## Guidance For CLI Help
 
@@ -267,6 +293,7 @@ The CLI help should explicitly mention at least:
 - `parm get` may return tuple-shaped data
 - `node get --section parms` may return `null`
 - `attrib get` is capped by default unless narrowed with `--element`
+- aggregate attribute stats are intentionally deferred
 
 These are important enough to document close to the commands themselves.
 

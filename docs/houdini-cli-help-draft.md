@@ -240,18 +240,10 @@ Narrowing:
 
 - `--element N` for one explicit element
 
-Optional numeric summaries:
-
-- `--stats min,max,mean,median`
-
 Examples:
 
 ```powershell
 uv run houdini-cli attrib get /obj/geo1/OUT P --class point --element 0
-```
-
-```powershell
-uv run houdini-cli attrib get /obj/geo1/OUT pscale --class point --limit 10 --stats min,max,mean
 ```
 
 ## Notes
@@ -262,4 +254,5 @@ uv run houdini-cli attrib get /obj/geo1/OUT pscale --class point --limit 10 --st
 - `node get --section parms` may return `null`
 - `node nav` requires a graphical Houdini session with a Network Editor pane
 - `attrib get` is summary-first by default and caps sampled values unless `--element` is used
+- aggregate attribute stats are intentionally out of scope for now; use SOP/VEX-side analysis when needed
 - detail attributes do not accept `--element`
