@@ -23,18 +23,30 @@ Recommended global install with `pipx`:
 ```powershell
 python -m pip install --user pipx
 python -m pipx ensurepath
-python -m pipx install .
+python -m pipx install git+https://github.com/limitsurface/houdini-cli.git
 ```
 
-After `ensurepath`, open a new terminal so the exposed `houdini-cli` command is available on `PATH`.
+For this private repo, make sure your GitHub credentials are available to git before installing from the repo URL.
 
-From a cloned GitHub repo, run the command from the repo root.
+From a local clone instead:
+
+```powershell
+python -m pipx install .
+```
 
 Direct install with `pip`:
 
 ```powershell
 python -m pip install .
 ```
+
+## Releases
+
+Pushing a tag like `v0.1.0` triggers a GitHub Actions workflow that:
+
+- runs the test suite
+- builds the wheel and sdist
+- creates a GitHub Release with the built artifacts attached
 
 ## Start Houdini Server
 
