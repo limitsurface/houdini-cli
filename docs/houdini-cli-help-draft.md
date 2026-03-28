@@ -2,9 +2,8 @@
 
 ## Purpose
 
-Very short agent-facing command reference for the CLI as it exists now.
-
-Use CLI help for command syntax.
+Compact agent-facing command reference.
+Focus on command shape, not tutorial detail.
 Use local Houdini help files for Houdini documentation.
 
 ## Rules
@@ -18,19 +17,11 @@ Use local Houdini help files for Houdini documentation.
 
 ### `ping`
 
-Check live Houdini connectivity.
-
-Example:
-
 ```powershell
 uv run houdini-cli ping
 ```
 
 ### `eval`
-
-Run arbitrary Python in the live Houdini session with `hou` available.
-
-Example:
 
 ```powershell
 uv run houdini-cli eval --code "print(hou.applicationVersionString())"
@@ -38,256 +29,146 @@ uv run houdini-cli eval --code "print(hou.applicationVersionString())"
 
 ### `parm get`
 
-Get parameter data.
-
-Default:
-
-- value-oriented result
-
-Full mode:
-
-- `--full`
-
-Examples:
+Syntax:
 
 ```powershell
-uv run houdini-cli parm get /obj/geo1/tx
+uv run houdini-cli parm get <parm-path> [--full]
 ```
 
+Example:
+
 ```powershell
-uv run houdini-cli parm get /obj/geo1/tx --full
+uv run houdini-cli parm get /obj/cli_attrib_live/box1/sizex
 ```
 
 ### `parm set`
 
-Set parameter data.
+Syntax:
 
-Default:
-
-- scalar/simple write path
-
-Full mode:
-
-- `--full`
+```powershell
+uv run houdini-cli parm set <parm-path> --json <payload-or-'-'> [--full]
+```
 
 Examples:
 
 ```powershell
-uv run houdini-cli parm set /obj/geo1/tx --json "3.0"
+uv run houdini-cli parm set /obj/cli_attrib_live/box1/sizex --json "2.5"
 ```
 
 ```powershell
-'{"value":[1,2,3]}' | uv run houdini-cli parm set /obj/geo1/t --full --json -
+'{"value":[1,2,3]}' | uv run houdini-cli parm set /obj/cli_attrib_live/box1/t --full --json -
 ```
 
 ### `node create`
 
-Create a node under a parent path.
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli node create /obj geo --name test_geo
+uv run houdini-cli node create <parent-path> <node-type> [--name <node-name>]
 ```
 
 ### `node delete`
 
-Delete a node by path.
-
-Example:
-
 ```powershell
-uv run houdini-cli node delete /obj/test_geo
+uv run houdini-cli node delete <node-path>
 ```
 
 ### `node get`
 
-Focused node inspection by default.
+Syntax:
 
-Sections:
-
-- `--section parms`
-- `--section inputs`
-- `--section full`
+```powershell
+uv run houdini-cli node get <node-path> [--section parms|inputs|full]
+```
 
 Examples:
 
 ```powershell
-uv run houdini-cli node get /obj/geo1
-```
-
-```powershell
-uv run houdini-cli node get /obj/geo1/null1 --section inputs
+uv run houdini-cli node get /obj/cli_attrib_live/OUT --section inputs
 ```
 
 ### `node set`
 
-Apply structured node data.
-
-Sections:
-
-- `--section parms`
-- `--section inputs`
-- `--section full`
-
-Example:
+Syntax:
 
 ```powershell
-'[{"from":"box1","from_index":0,"to_index":0}]' | uv run houdini-cli node set /obj/geo1/null1 --section inputs --json -
+uv run houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>
 ```
 
 ### `node list`
 
-List nodes under a root with summary output.
-
-Default limits:
-
-- `max_nodes=50`
-- `max_depth=1`
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli node list /obj/geo1
+uv run houdini-cli node list <root-path> [--max-depth N] [--max-nodes N]
 ```
 
 ### `node find`
 
-Find nodes under a root.
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli node find /obj/geo1 --type box
+uv run houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT]
 ```
 
 ### `node summary`
 
-Get a compact graph summary for a root.
-
-Example:
-
 ```powershell
-uv run houdini-cli node summary /obj/geo1
+uv run houdini-cli node summary <root-path> [--max-depth N] [--max-nodes N]
 ```
 
 ### `node inspect`
 
-Get a focused summary for one node.
-
-Example:
-
 ```powershell
-uv run houdini-cli node inspect /obj/geo1/box1
+uv run houdini-cli node inspect <node-path>
 ```
 
 ### `node nav`
 
-Navigate a Network Editor to one or more nodes in the same parent network.
-
-Default:
-
-- switch the pane to the shared parent network
-- select the target nodes
-- set the last node current
-- frame the selection
-
-Flags:
-
-- `--no-frame`
-- `--no-select`
-- `--no-current`
-
-Examples:
+Syntax:
 
 ```powershell
-uv run houdini-cli node nav /obj/geo1/box1 /obj/geo1/null1
+uv run houdini-cli node nav <node-path> [<node-path> ...] [--no-frame] [--no-select] [--no-current]
 ```
 
-```powershell
-uv run houdini-cli node nav /obj/geo1/box1 --no-select --no-current
-```
+Requires shared parent network and graphical Houdini UI.
 
 ### `attrib list`
 
-List cooked geometry attribute definitions on a node.
-
-Optional filter:
-
-- `--class point|prim|vertex|detail`
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli attrib list /obj/geo1/OUT
+uv run houdini-cli attrib list <node-path> [--class point|prim|vertex|detail]
 ```
 
 ### `attrib get`
 
-Inspect one cooked geometry attribute.
-
-Required:
-
-- attribute name
-- `--class point|prim|vertex|detail`
-
-Default:
-
-- returns a capped sample
-- includes truncation metadata
-
-Narrowing:
-
-- `--element N` for one explicit element
-
-Examples:
+Syntax:
 
 ```powershell
-uv run houdini-cli attrib get /obj/geo1/OUT P --class point --element 0
+uv run houdini-cli attrib get <node-path> <attrib-name> --class point|prim|vertex|detail [--element N] [--limit N]
 ```
 
 ### `nodetype list`
 
-List available node types in one category with compact output.
-
-Required:
-
-- `--category obj|sop|cop|vop|rop|lop|dop|shop`
-
-Default:
-
-- capped output
-- compact items
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli nodetype list --category sop --limit 20
+uv run houdini-cli nodetype list --category obj|sop|cop|vop|rop|lop|dop|shop [--limit N]
 ```
 
 ### `nodetype find`
 
-Search available node types in one category.
-
-Requires at least one filter:
-
-- `--query`
-- `--prefix`
-
-Example:
+Syntax:
 
 ```powershell
-uv run houdini-cli nodetype find --category sop --query wrangle
+uv run houdini-cli nodetype find --category obj|sop|cop|vop|rop|lop|dop|shop (--query TEXT | --prefix TEXT) [--limit N]
 ```
 
 ### `nodetype get`
 
-Get fuller metadata for one node type.
-
-Example:
-
 ```powershell
-uv run houdini-cli nodetype get --category sop attribwrangle
+uv run houdini-cli nodetype get --category obj|sop|cop|vop|rop|lop|dop|shop <type-key>
 ```
 
 ## Notes
@@ -296,7 +177,6 @@ uv run houdini-cli nodetype get --category sop attribwrangle
 - complex JSON should usually go through stdin with `--json -`
 - component parm reads may return tuple-shaped data
 - `node get --section parms` may return `null`
-- `node nav` requires a graphical Houdini session with a Network Editor pane
 - `attrib get` is summary-first by default and caps sampled values unless `--element` is used
 - aggregate attribute stats are intentionally out of scope for now; use SOP/VEX-side analysis when needed
 - detail attributes do not accept `--element`

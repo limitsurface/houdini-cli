@@ -269,6 +269,38 @@ For now:
 
 Even if the underlying hard crash is in Houdini/rpyc internals, this is still a CLI design boundary we should respect.
 
+## Observation 10: Node Input Round-Trips Can Canonicalize Source Names
+
+When applying node inputs through:
+
+- `node set --section inputs`
+
+using an absolute source path such as:
+
+- `/obj/cli_attrib_live/OUT`
+
+the follow-up read from:
+
+- `node get --section inputs`
+
+returned a compact local source name such as:
+
+- `OUT`
+
+instead of preserving the original absolute path text.
+
+### Implication
+
+Input payload round-trips should be treated as semantic, not byte-for-byte stable.
+
+The important parts are:
+
+- source identity
+- source output index
+- destination input index
+
+The agent should not assume the original path spelling will be preserved exactly after a read/write round-trip.
+
 ## Guidance For The Future Skill
 
 The eventual minimal skill should likely teach the agent:
@@ -283,6 +315,7 @@ The eventual minimal skill should likely teach the agent:
 - do not assume Houdini generator objects slice cleanly over `hrpyc`
 - do not broadly localize Houdini enum/SWIG-backed metadata objects
 - do not attempt heavy aggregate geometry analysis over `hrpyc` when a SOP/VEX path is available
+- do not assume input wiring payloads round-trip with identical path spelling
 
 ## Guidance For CLI Help
 
@@ -294,6 +327,7 @@ The CLI help should explicitly mention at least:
 - `node get --section parms` may return `null`
 - `attrib get` is capped by default unless narrowed with `--element`
 - aggregate attribute stats are intentionally deferred
+- input wiring payloads may canonicalize source names on read-back
 
 These are important enough to document close to the commands themselves.
 

@@ -6,6 +6,10 @@ from houdini_cli.main import build_parser, main
 def test_build_parser_registers_new_command_groups() -> None:
     parser = build_parser()
 
+    args = parser.parse_args(["help", "node", "nav"])
+    assert args.command == "help"
+    assert args.command_path == ["node", "nav"]
+
     args = parser.parse_args(["nodetype", "get", "--category", "sop", "attribwrangle"])
     assert args.command == "nodetype"
     assert args.nodetype_command == "get"

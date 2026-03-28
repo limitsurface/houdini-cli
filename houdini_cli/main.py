@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 from .commands import attrib
 from .commands import eval as eval_command
+from .commands import help as help_command
 from .commands import node
 from .commands import nodetype
 from .commands import parm
@@ -34,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     session.register_parser(subparsers)
+    help_command.register_parser(subparsers)
     eval_command.register_parser(subparsers)
     parm.register_parser(subparsers)
     node.register_parser(subparsers)
@@ -56,7 +58,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0 if result.get("ok", False) else 1
     except Exception as exc:  # pragma: no cover - top-level safety net
-        logger.exception("CLI command failed")
+        if args.debug:
+            logger.exception("CLI command failed")
+        else:
+            logger.error("CLI command failed: %s", exc)
         json.dump(error_result(exc), sys.stdout)
         sys.stdout.write("\n")
         return 1
