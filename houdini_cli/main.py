@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from collections.abc import Sequence
 
@@ -43,6 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     configure_logging(debug=args.debug)
+    logger = logging.getLogger(__name__)
 
     try:
         result = args.handler(args)
@@ -50,6 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0 if result.get("ok", False) else 1
     except Exception as exc:  # pragma: no cover - top-level safety net
+        logger.exception("CLI command failed")
         json.dump(error_result(exc), sys.stdout)
         sys.stdout.write("\n")
         return 1

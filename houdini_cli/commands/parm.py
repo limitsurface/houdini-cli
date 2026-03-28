@@ -60,5 +60,8 @@ def handle_set(args: argparse.Namespace) -> dict:
         if args.full:
             parm.setFromData(payload)
         else:
-            parm.setValueFromData(payload)
+            if isinstance(payload, (int, float, str, bool)):
+                parm.set(payload)
+            else:
+                parm.setValueFromData(payload)
         return success_result({"parm_path": args.parm_path, "applied": True})

@@ -9,6 +9,7 @@ class FakeParm:
     def __init__(self) -> None:
         self.last_value_payload = None
         self.last_full_payload = None
+        self.last_scalar_payload = None
 
     def valueAsData(self):
         return {"value": 3}
@@ -21,6 +22,9 @@ class FakeParm:
 
     def setFromData(self, payload):
         self.last_full_payload = payload
+
+    def set(self, payload):
+        self.last_scalar_payload = payload
 
 
 class FakeSession:
@@ -78,6 +82,20 @@ def test_handle_set_default(monkeypatch) -> None:
     assert result["ok"] is True
     assert fake_parm.last_value_payload == {"a": 1}
     assert fake_parm.last_full_payload is None
+    assert fake_parm.last_scalar_payload is None
+
+
+def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
+    fake_parm = FakeParm()
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm, "load_json_input", lambda raw: 4.5)
+
+    result = parm.handle_set(
+        Namespace(host="localhost", port=18811, parm_path="/obj/x", full=False, json="4.5")
+    )
+    assert result["ok"] is True
+    assert fake_parm.last_scalar_payload == 4.5
+    assert fake_parm.last_value_payload is None
 
 
 def test_handle_set_full(monkeypatch) -> None:
