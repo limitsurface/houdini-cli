@@ -1,0 +1,4 @@
+interface:
+  display_name: "Houdini CLI"
+  short_description: "Thin agent guide for the Houdini CLI"
+  default_prompt: "Use $houdini-cli to defer Houdini CLI command details to the built-in help command."
