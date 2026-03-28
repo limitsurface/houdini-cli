@@ -3,7 +3,7 @@ name = "houdini-cli"
 version = "0.1.0"
 description = "Agent-oriented CLI for controlling a live Houdini session over hrpyc/rpyc."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 dependencies = [
   "rpyc>=5.3,<6.0",
 ]
@@ -21,8 +21,8 @@ houdini-cli = "houdini_cli.main:main"
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["houdini_cli"]
+[tool.setuptools.packages.find]
+include = ["houdini_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

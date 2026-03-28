@@ -1,5 +1,6 @@
 houdini_help/
 tmp/
+dist/
 .venv/
 __pycache__/
 *.pyc
