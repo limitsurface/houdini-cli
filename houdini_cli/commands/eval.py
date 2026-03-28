@@ -7,7 +7,8 @@ import contextlib
 import io
 
 from ..format.envelopes import success_result
-from ..transport.rpyc import connect
+from ..runtime.timeouts import EVAL_TIMEOUT_SECONDS
+from ..transport.rpyc import connect, sync_request_timeout
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -18,19 +19,20 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 
 def handle_eval(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
-        exec_globals = {"hou": session.hou, "__builtins__": __builtins__}
+        with sync_request_timeout(session, EVAL_TIMEOUT_SECONDS):
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+            exec_globals = {"hou": session.hou, "__builtins__": __builtins__}
 
-        with (
-            contextlib.redirect_stdout(stdout_capture),
-            contextlib.redirect_stderr(stderr_capture),
-        ):
-            exec(args.code, exec_globals)
+            with (
+                contextlib.redirect_stdout(stdout_capture),
+                contextlib.redirect_stderr(stderr_capture),
+            ):
+                exec(args.code, exec_globals)
 
-        return success_result(
-            {
-                "stdout": stdout_capture.getvalue(),
-                "stderr": stderr_capture.getvalue(),
-            }
-        )
+            return success_result(
+                {
+                    "stdout": stdout_capture.getvalue(),
+                    "stderr": stderr_capture.getvalue(),
+                }
+            )

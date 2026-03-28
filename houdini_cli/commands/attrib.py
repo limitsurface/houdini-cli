@@ -6,7 +6,8 @@ import argparse
 from typing import Any
 
 from ..format.envelopes import success_result
-from ..transport.rpyc import connect, localize
+from ..runtime.timeouts import BROAD_READ_TIMEOUT_SECONDS
+from ..transport.rpyc import connect, localize, sync_request_timeout
 from .node_common import get_node
 
 DEFAULT_LIMIT = 10
@@ -174,53 +175,55 @@ def _value_from_element(element: Any, attrib: Any) -> Any:
 
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = get_node(session, args.node_path)
-        geometry = _get_geometry(node)
+        with sync_request_timeout(session, BROAD_READ_TIMEOUT_SECONDS):
+            node = get_node(session, args.node_path)
+            geometry = _get_geometry(node)
 
-        classes = [args.attrib_class] if args.attrib_class else list(VALID_CLASSES)
-        data = {"node": args.node_path, "classes": {}}
-        for attrib_class in classes:
-            list_name, _ = _class_accessor(attrib_class)
-            attribs = getattr(geometry, list_name)()
-            data["classes"][attrib_class] = [_attrib_definition(attrib, attrib_class) for attrib in attribs]
+            classes = [args.attrib_class] if args.attrib_class else list(VALID_CLASSES)
+            data = {"node": args.node_path, "classes": {}}
+            for attrib_class in classes:
+                list_name, _ = _class_accessor(attrib_class)
+                attribs = getattr(geometry, list_name)()
+                data["classes"][attrib_class] = [_attrib_definition(attrib, attrib_class) for attrib in attribs]
 
-        return success_result(data)
+            return success_result(data)
 
 
 def handle_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = get_node(session, args.node_path)
-        geometry = _get_geometry(node)
-        attrib = _get_attrib(geometry, args.attrib_class, args.attrib_name)
-        count = _element_count(geometry, args.attrib_class)
+        with sync_request_timeout(session, BROAD_READ_TIMEOUT_SECONDS):
+            node = get_node(session, args.node_path)
+            geometry = _get_geometry(node)
+            attrib = _get_attrib(geometry, args.attrib_class, args.attrib_name)
+            count = _element_count(geometry, args.attrib_class)
 
-        data = {
-            "node": args.node_path,
-            "attribute": _attrib_definition(attrib, args.attrib_class),
-        }
-
-        meta: dict[str, Any] | None = None
-
-        if args.attrib_class == "detail":
-            if args.element is not None:
-                raise ValueError("Detail attributes do not accept --element")
-            data["value"] = localize(geometry.attribValue(attrib))
-        elif args.element is not None:
-            element = _element_at(geometry, args.attrib_class, args.element)
-            data["value"] = {
-                "element": args.element,
-                "value": _value_from_element(element, attrib),
-            }
-        else:
-            sampled = _sample_elements(geometry, args.attrib_class, args.limit)
-            data["values"] = [
-                {"element": index, "value": _value_from_element(element, attrib)}
-                for index, element in sampled
-            ]
-            meta = {
-                "limit": args.limit,
-                "truncated": count > args.limit,
-                "total_elements": count,
+            data = {
+                "node": args.node_path,
+                "attribute": _attrib_definition(attrib, args.attrib_class),
             }
 
-        return success_result(data, meta=meta)
+            meta: dict[str, Any] | None = None
+
+            if args.attrib_class == "detail":
+                if args.element is not None:
+                    raise ValueError("Detail attributes do not accept --element")
+                data["value"] = localize(geometry.attribValue(attrib))
+            elif args.element is not None:
+                element = _element_at(geometry, args.attrib_class, args.element)
+                data["value"] = {
+                    "element": args.element,
+                    "value": _value_from_element(element, attrib),
+                }
+            else:
+                sampled = _sample_elements(geometry, args.attrib_class, args.limit)
+                data["values"] = [
+                    {"element": index, "value": _value_from_element(element, attrib)}
+                    for index, element in sampled
+                ]
+                meta = {
+                    "limit": args.limit,
+                    "truncated": count > args.limit,
+                    "total_elements": count,
+                }
+
+            return success_result(data, meta=meta)

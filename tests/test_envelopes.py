@@ -16,5 +16,6 @@ def test_success_result_with_meta() -> None:
 def test_error_result_contains_type_and_message() -> None:
     result = error_result(RuntimeError("bad"))
     assert result["ok"] is False
+    assert result["error"]["category"] == "runtime"
     assert result["error"]["type"].endswith("RuntimeError")
     assert result["error"]["message"] == "bad"

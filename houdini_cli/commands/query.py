@@ -7,7 +7,8 @@ from collections import Counter, deque
 from typing import Any
 
 from ..format.envelopes import success_result
-from ..transport.rpyc import connect, localize
+from ..runtime.timeouts import TRAVERSAL_TIMEOUT_SECONDS
+from ..transport.rpyc import connect, localize, sync_request_timeout
 from .node_common import get_node, node_summary
 
 DEFAULT_MAX_NODES = 50
@@ -73,85 +74,89 @@ def _match(node: Any, *, type_name: str | None, category: str | None, name: str 
 
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        root = get_node(session, args.root_path)
-        nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-        items = [node_summary(node) for node in nodes[1:]]
-        return success_result(
-            {
-                "root": args.root_path,
-                "count": len(items),
-                "items": items,
-            },
-            meta={
-                "truncated": truncated,
-                "max_nodes": args.max_nodes,
-                "max_depth": args.max_depth,
-            },
-        )
+        with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
+            root = get_node(session, args.root_path)
+            nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
+            items = [node_summary(node) for node in nodes[1:]]
+            return success_result(
+                {
+                    "root": args.root_path,
+                    "count": len(items),
+                    "items": items,
+                },
+                meta={
+                    "truncated": truncated,
+                    "max_nodes": args.max_nodes,
+                    "max_depth": args.max_depth,
+                },
+            )
 
 
 def handle_find(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        root = get_node(session, args.root_path)
-        nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-        items = [
-            node_summary(node)
-            for node in nodes[1:]
-            if _match(node, type_name=args.type_name, category=args.category, name=args.name)
-        ]
-        return success_result(
-            {
-                "root": args.root_path,
-                "count": len(items),
-                "items": items,
-            },
-            meta={
-                "truncated": truncated,
-                "max_nodes": args.max_nodes,
-                "max_depth": args.max_depth,
-            },
-        )
+        with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
+            root = get_node(session, args.root_path)
+            nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
+            items = [
+                node_summary(node)
+                for node in nodes[1:]
+                if _match(node, type_name=args.type_name, category=args.category, name=args.name)
+            ]
+            return success_result(
+                {
+                    "root": args.root_path,
+                    "count": len(items),
+                    "items": items,
+                },
+                meta={
+                    "truncated": truncated,
+                    "max_nodes": args.max_nodes,
+                    "max_depth": args.max_depth,
+                },
+            )
 
 
 def handle_summary(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        root = get_node(session, args.root_path)
-        nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-        descendants = nodes[1:]
-        type_histogram = Counter(node_summary(node)["type"] for node in descendants)
-        terminal_nodes = [
-            node_summary(node)["path"]
-            for node in descendants
-            if node_summary(node)["output_count"] == 0
-        ][:10]
-        entry_nodes = [
-            node_summary(node)["path"]
-            for node in descendants
-            if node_summary(node)["input_count"] == 0
-        ][:10]
-        return success_result(
-            {
-                "root": args.root_path,
-                "node_count": len(descendants),
-                "type_histogram": dict(type_histogram),
-                "entry_nodes": entry_nodes,
-                "terminal_nodes": terminal_nodes,
-            },
-            meta={
-                "truncated": truncated,
-                "max_nodes": args.max_nodes,
-                "max_depth": args.max_depth,
-            },
-        )
+        with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
+            root = get_node(session, args.root_path)
+            nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
+            descendants = nodes[1:]
+            type_histogram = Counter(node_summary(node)["type"] for node in descendants)
+            terminal_nodes = [
+                node_summary(node)["path"]
+                for node in descendants
+                if node_summary(node)["output_count"] == 0
+            ][:10]
+            entry_nodes = [
+                node_summary(node)["path"]
+                for node in descendants
+                if node_summary(node)["input_count"] == 0
+            ][:10]
+            return success_result(
+                {
+                    "root": args.root_path,
+                    "node_count": len(descendants),
+                    "type_histogram": dict(type_histogram),
+                    "entry_nodes": entry_nodes,
+                    "terminal_nodes": terminal_nodes,
+                },
+                meta={
+                    "truncated": truncated,
+                    "max_nodes": args.max_nodes,
+                    "max_depth": args.max_depth,
+                },
+            )
 
 
 def handle_inspect(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = get_node(session, args.node_path)
-        summary = node_summary(node)
-        summary["interesting_parms"] = [
-            localize(parm.name())
-            for parm in node.parms()[:10]
-            if not bool(localize(parm.isAtDefault()))
-        ]
-        return success_result(summary)
+        with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
+            node = get_node(session, args.node_path)
+            summary = node_summary(node)
+            summary["interesting_parms"] = [
+                localize(parm.name())
+                for parm in node.parms()[:10]
+                if not bool(localize(parm.isAtDefault()))
+            ]
+            return success_result(summary)

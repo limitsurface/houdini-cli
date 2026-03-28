@@ -10,4 +10,5 @@ def configure_logging(*, debug: bool) -> None:
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
     )
