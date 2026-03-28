@@ -129,6 +129,20 @@ def test_handle_list(monkeypatch) -> None:
     assert result["data"]["count"] == 2
 
 
+def test_handle_list_truncates(monkeypatch) -> None:
+    root, _, _ = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_list(
+        Namespace(host="localhost", port=18811, root_path="/obj", max_depth=1, max_nodes=2)
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["count"] == 1
+    assert result["meta"]["truncated"] is True
+
+
 def test_handle_find(monkeypatch) -> None:
     root, _, _ = _make_tree()
     monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
@@ -149,6 +163,29 @@ def test_handle_find(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["data"]["count"] == 1
     assert result["data"]["items"][0]["type"] == "box"
+
+
+def test_handle_find_by_name(monkeypatch) -> None:
+    root, _, _ = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            root_path="/obj",
+            type_name=None,
+            category=None,
+            name="NULL",
+            max_depth=1,
+            max_nodes=50,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["count"] == 1
+    assert result["data"]["items"][0]["name"] == "null1"
 
 
 def test_handle_summary(monkeypatch) -> None:

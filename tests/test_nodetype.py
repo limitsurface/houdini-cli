@@ -199,6 +199,19 @@ def test_handle_find_requires_filter(monkeypatch) -> None:
         )
 
 
+def test_handle_find_no_matches(monkeypatch) -> None:
+    monkeypatch.setattr(nodetype, "connect", FakeConnect(FakeSession(FakeHou(_fake_categories()))))
+
+    result = nodetype.handle_find(
+        Namespace(host="localhost", port=18811, category="sop", query="missing", prefix=None, limit=50)
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["count"] == 0
+    assert result["data"]["items"] == []
+    assert result["meta"]["truncated"] is False
+
+
 def test_handle_get(monkeypatch) -> None:
     monkeypatch.setattr(nodetype, "connect", FakeConnect(FakeSession(FakeHou(_fake_categories()))))
 
