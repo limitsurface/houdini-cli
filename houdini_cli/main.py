@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from .commands import attrib
 from .commands import eval as eval_command
 from .commands import node
+from .commands import nodetype
 from .commands import parm
 from .commands import session
 from .format.envelopes import error_result
@@ -37,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     parm.register_parser(subparsers)
     node.register_parser(subparsers)
     attrib.register_parser(subparsers)
+    nodetype.register_parser(subparsers)
 
     return parser
 

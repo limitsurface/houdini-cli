@@ -383,7 +383,103 @@ Test against small, medium, and large networks and validate:
 - summary fields feel sufficient
 - no accidental giant payloads by default
 
-## Stage 5: Logging, Timeouts, And Error Hardening
+## Stage 5: Attribute Inspection V1
+
+### Modularity requirements
+
+Attribute commands should live in their own command module, for example `commands/attrib.py`.
+
+Do not bury attribute reads inside:
+
+- `commands/node.py`
+- `commands/query.py`
+- generic eval helpers
+
+This is a separate concern with its own payload limits and geometry-specific failure modes.
+
+### Deliverables
+
+- `attrib list`
+- `attrib get`
+
+### Notes
+
+Keep this tool minimal.
+
+It should be geometry-first and read-only:
+
+- discover attribute definitions
+- inspect one attribute
+- support explicit element addressing
+
+### Unit tests
+
+- class validation
+- missing geometry handling
+- missing attribute handling
+- `--element` behavior
+- default limit/truncation behavior
+
+### Live test checkpoint
+
+Validate on real SOP geometry:
+
+- common built-ins like `P`, `Cd`, `N`
+- point, prim, and detail classes
+- direct `--element` reads
+- payload size with and without `--element`
+
+### Exit criteria
+
+- attribute inspection is usable without raw Python
+- default payloads stay compact
+- `--element` addressing feels practical
+
+## Stage 6: Network Navigation V1
+
+### Modularity requirements
+
+Network navigation should stay separate from semantic query and mutation commands.
+
+If implemented as a node command, keep the UI-driving logic isolated internally or in a dedicated module.
+
+Do not let pane-control code leak into traversal or node data helpers.
+
+### Deliverables
+
+- `node nav`
+
+### Notes
+
+This command should be opinionated:
+
+- accept one or more node paths
+- require a shared parent network
+- navigate the Network Editor
+- select targets
+- frame them
+
+### Unit tests
+
+- argument validation
+- same-parent enforcement
+- result envelope shape
+
+### Live test checkpoint
+
+Validate in a real Houdini UI session:
+
+- single-node framing
+- multi-node framing in one network
+- behavior when nodes do not share a parent
+- usefulness alongside `computer_use`
+
+### Exit criteria
+
+- the agent can reliably bring a network region into view
+- the command reduces reliance on arbitrary pane-control Python
+
+## Stage 7: Logging, Timeouts, And Error Hardening
 
 ### Modularity requirements
 
@@ -431,7 +527,7 @@ Validate:
 - dev ergonomics are good
 - runtime behavior is predictable
 
-## Stage 6: Test Expansion And Cleanup
+## Stage 8: Test Expansion And Cleanup
 
 ### Modularity requirements
 
@@ -476,6 +572,65 @@ Cover at least:
 ### Exit criteria
 
 - enough confidence to use the CLI as the primary agent interface
+
+## Stage 9: Node Type Discovery V1
+
+### Modularity requirements
+
+Node type discovery should live in its own command module, for example `commands/nodetype.py`.
+
+Do not fold this into:
+
+- `commands/node.py`
+- `commands/query.py`
+- generic `eval` helpers
+
+This is distinct from scene traversal:
+
+- traversal answers what nodes exist in the scene
+- node type discovery answers what node types are available for creation
+
+### Deliverables
+
+- `nodetype list`
+- `nodetype find`
+- `nodetype get`
+
+### Notes
+
+This command family must be context-safe by default.
+
+The live API probe showed that some categories, especially SOPs, can expose very large type registries once stock tools, HDAs, and packages are loaded.
+
+So V1 should:
+
+- require one category
+- cap results by default
+- return compact list/find items
+- keep full metadata in `nodetype get`
+
+### Unit tests
+
+- category validation
+- default limit/truncation behavior
+- search filtering
+- missing type handling
+- compact versus full payload shaping
+
+### Live test checkpoint
+
+Validate against a real Houdini session:
+
+- category counts on common categories like `sop`, `cop`, `lop`, `obj`
+- namespaced and versioned HDA keys
+- search usefulness for common queries like `wrangle`
+- payload size remains safe under default settings
+
+### Exit criteria
+
+- the agent can discover creation tokens without dropping into raw `eval`
+- default outputs stay compact enough for context safety
+- full metadata is available only when explicitly requested
 
 ## Optional Later Stages
 

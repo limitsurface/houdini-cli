@@ -246,6 +246,50 @@ Examples:
 uv run houdini-cli attrib get /obj/geo1/OUT P --class point --element 0
 ```
 
+### `nodetype list`
+
+List available node types in one category with compact output.
+
+Required:
+
+- `--category obj|sop|cop|vop|rop|lop|dop|shop`
+
+Default:
+
+- capped output
+- compact items
+
+Example:
+
+```powershell
+uv run houdini-cli nodetype list --category sop --limit 20
+```
+
+### `nodetype find`
+
+Search available node types in one category.
+
+Requires at least one filter:
+
+- `--query`
+- `--prefix`
+
+Example:
+
+```powershell
+uv run houdini-cli nodetype find --category sop --query wrangle
+```
+
+### `nodetype get`
+
+Get fuller metadata for one node type.
+
+Example:
+
+```powershell
+uv run houdini-cli nodetype get --category sop attribwrangle
+```
+
 ## Notes
 
 - `rpyc 5.x` is required with the current Houdini/hrpyc pairing
@@ -256,3 +300,4 @@ uv run houdini-cli attrib get /obj/geo1/OUT P --class point --element 0
 - `attrib get` is summary-first by default and caps sampled values unless `--element` is used
 - aggregate attribute stats are intentionally out of scope for now; use SOP/VEX-side analysis when needed
 - detail attributes do not accept `--element`
+- `nodetype list` and `nodetype find` are intentionally compact and capped by default
