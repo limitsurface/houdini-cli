@@ -17,7 +17,7 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 ## General
 
 - Prefer the CLI over ad hoc Python when the CLI already covers the task.
-- When command shape or flags are unclear, call `uv run houdini-cli help` or `uv run houdini-cli help <command-path>`.
+- When command shape or flags are unclear, call `houdini-cli help` or `houdini-cli help <command-path>`.
 - Use the CLI help as the source of truth for command details.
 - Use raw `rg` against `skills/houdini-cli/help_prepared/` for local Houdini doc lookup.
 - Do not restate or duplicate command-specific help inside this skill.
