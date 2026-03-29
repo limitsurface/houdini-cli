@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
@@ -52,6 +53,17 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="Return a structured node section instead of the default focused summary.",
     )
     get_parser.set_defaults(handler=handle_get)
+
+    errors_parser = node_subparsers.add_parser("errors", help="Get errors, warnings, and messages for nodes.")
+    errors_parser.add_argument("node_paths", nargs="+", help="One or more node paths to inspect.")
+    errors_parser.set_defaults(handler=handle_errors)
+
+    connections_parser = node_subparsers.add_parser(
+        "connections",
+        help="Get stable, explicit connection data for a node.",
+    )
+    connections_parser.add_argument("node_path", help="Node path to inspect.")
+    connections_parser.set_defaults(handler=handle_connections)
 
     set_parser = node_subparsers.add_parser("set", help="Apply structured node data.")
     set_parser.add_argument("node_path", help="Node path to modify.")
@@ -188,6 +200,55 @@ def handle_get(args: argparse.Namespace) -> dict:
                 }
             )
         return success_result(node_summary(node))
+
+
+def _node_messages(node: Any) -> dict[str, list[str]]:
+    return {
+        "errors": [localize(item) for item in node.errors()],
+        "warnings": [localize(item) for item in node.warnings()],
+        "messages": [localize(item) for item in node.messages()],
+    }
+
+
+def handle_errors(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        items = []
+        for node_path in args.node_paths:
+            node = get_node(session, node_path)
+            if hasattr(node, "cook"):
+                try:
+                    node.cook(force=True)
+                except Exception:
+                    pass
+            items.append({"node_path": localize(node.path()), **_node_messages(node)})
+        return success_result({"count": len(items), "items": items})
+
+
+def _connection_payload(connection: Any) -> dict[str, Any]:
+    source = connection.inputNode()
+    dest = connection.outputNode()
+    return {
+        "from_path": localize(source.path()) if source is not None else None,
+        "from_output_index": int(localize(connection.outputIndex())),
+        "from_output_name": localize(connection.inputName()),
+        "from_output_label": localize(connection.inputLabel()),
+        "to_path": localize(dest.path()) if dest is not None else None,
+        "to_input_index": int(localize(connection.inputIndex())),
+        "to_input_name": localize(connection.outputName()),
+        "to_input_label": localize(connection.outputLabel()),
+    }
+
+
+def handle_connections(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        node = get_node(session, args.node_path)
+        return success_result(
+            {
+                "node_path": localize(node.path()),
+                "inputs": [_connection_payload(connection) for connection in node.inputConnections()],
+                "outputs": [_connection_payload(connection) for connection in node.outputConnections()],
+            }
+        )
 
 
 def handle_set(args: argparse.Namespace) -> dict:

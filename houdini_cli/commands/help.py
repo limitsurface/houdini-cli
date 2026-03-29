@@ -29,6 +29,21 @@ HELP_TREE = {
         "usage": "houdini-cli ping",
         "examples": ["uv run houdini-cli ping"],
     },
+    "session": {
+        "children": {
+            "ping": {
+                "usage": "houdini-cli session ping",
+                "examples": ["uv run houdini-cli session ping"],
+            },
+            "frame": {
+                "usage": "houdini-cli session frame [<frame>]",
+                "examples": [
+                    "uv run houdini-cli session frame",
+                    "uv run houdini-cli session frame 24",
+                ],
+            },
+        }
+    },
     "eval": {
         "usage": "houdini-cli eval --code <python>",
         "examples": ['uv run houdini-cli eval --code "print(hou.applicationVersionString())"'],
@@ -38,6 +53,10 @@ HELP_TREE = {
             "get": {
                 "usage": "houdini-cli parm get <parm-path> [--full]",
                 "examples": ["uv run houdini-cli parm get /obj/cli_attrib_live/box1/sizex"],
+            },
+            "menu": {
+                "usage": "houdini-cli parm menu <parm-path>",
+                "examples": ["uv run houdini-cli parm menu /obj/cli_attrib_live/box1/type"],
             },
             "set": {
                 "usage": "houdini-cli parm set <parm-path> --json <payload-or-'-'> [--full]",
@@ -56,6 +75,8 @@ HELP_TREE = {
                 "usage": "houdini-cli node get <node-path> [--section parms|inputs|full]",
                 "examples": ["uv run houdini-cli node get /obj/cli_attrib_live/OUT --section inputs"],
             },
+            "errors": {"usage": "houdini-cli node errors <node-path> [<node-path> ...]"},
+            "connections": {"usage": "houdini-cli node connections <node-path>"},
             "set": {
                 "usage": "houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>",
             },
@@ -67,6 +88,18 @@ HELP_TREE = {
                 "usage": "houdini-cli node nav <node-path> [<node-path> ...] [--no-frame] [--no-select] [--no-current]",
                 "notes": ["requires shared parent network and graphical Houdini UI"],
             },
+        }
+    },
+    "cop": {
+        "children": {
+            "sample": {
+                "usage": "houdini-cli cop sample <node-path> [--output <index-or-name>] (--x X --y Y | --points <json-or-'-'>)",
+            },
+        }
+    },
+    "opencl": {
+        "children": {
+            "sync": {"usage": "houdini-cli opencl sync <node-path> [--clear]"},
         }
     },
     "attrib": {

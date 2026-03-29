@@ -9,7 +9,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "eval", "node", "nodetype", "parm", "ping"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "node", "nodetype", "opencl", "parm", "ping", "session"]
     assert "stdout is JSON" in result["data"]["rules"]
 
 
@@ -26,7 +26,15 @@ def test_handle_help_group_lists_subcommands() -> None:
     result = help_command.handle_help(Namespace(command_path=["parm"]))
 
     assert result["ok"] is True
-    assert result["data"]["subcommands"] == ["get", "set"]
+    assert result["data"]["subcommands"] == ["get", "menu", "set"]
+
+
+def test_handle_help_session_frame_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["session", "frame"]))
+
+    assert result["ok"] is True
+    assert result["data"]["path"] == ["session", "frame"]
+    assert result["data"]["usage"] == "houdini-cli session frame [<frame>]"
 
 
 def test_handle_help_missing_topic_raises() -> None:

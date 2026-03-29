@@ -71,6 +71,23 @@ def test_handle_get_full(monkeypatch) -> None:
     assert result["data"]["value"] == {"full": True, "brief": False}
 
 
+def test_handle_menu(monkeypatch) -> None:
+    fake_parm = FakeParm()
+    fake_parm.menuItems = lambda: ("poly", "mesh")
+    fake_parm.menuLabels = lambda: ("Polygon", "Mesh")
+    fake_parm.evalAsString = lambda: "poly"
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_menu(Namespace(host="localhost", port=18811, parm_path="/obj/x"))
+    assert result["ok"] is True
+    assert result["data"]["current_value"] == "poly"
+    assert result["data"]["menu_items"] == [
+        {"token": "poly", "label": "Polygon"},
+        {"token": "mesh", "label": "Mesh"},
+    ]
+
+
 def test_handle_set_default(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))

@@ -23,6 +23,10 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     )
     get_parser.set_defaults(handler=handle_get)
 
+    menu_parser = parm_subparsers.add_parser("menu", help="Get menu tokens and labels for a parameter.")
+    menu_parser.add_argument("parm_path", help="Full Houdini parameter path.")
+    menu_parser.set_defaults(handler=handle_menu)
+
     set_parser = parm_subparsers.add_parser("set", help="Set parameter value or full parameter data.")
     set_parser.add_argument("parm_path", help="Full Houdini parameter path.")
     set_parser.add_argument(
@@ -51,6 +55,25 @@ def handle_get(args: argparse.Namespace) -> dict:
         data = parm.asData(brief=False) if args.full else parm.valueAsData()
         data = localize(data)
         return success_result({"parm_path": args.parm_path, "value": data})
+
+
+def handle_menu(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        items = list(localize(parm.menuItems()))
+        labels = list(localize(parm.menuLabels()))
+        if not items:
+            raise ValueError(f"Parameter does not provide a menu: {args.parm_path}")
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "current_value": localize(parm.evalAsString()),
+                "menu_items": [
+                    {"token": token, "label": label}
+                    for token, label in zip(items, labels, strict=True)
+                ],
+            }
+        )
 
 
 def handle_set(args: argparse.Namespace) -> dict:

@@ -21,6 +21,22 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.attrib_command == "get"
     assert args.attrib_class == "point"
 
+    args = parser.parse_args(["cop", "sample", "/obj/cops/constant1", "--x", "1", "--y", "2"])
+    assert args.command == "cop"
+    assert args.cop_command == "sample"
+    assert args.x == 1
+    assert args.y == 2
+
+    args = parser.parse_args(["opencl", "sync", "/obj/cops/opencl1", "--clear"])
+    assert args.command == "opencl"
+    assert args.opencl_command == "sync"
+    assert args.clear is True
+
+    args = parser.parse_args(["session", "frame", "24"])
+    assert args.command == "session"
+    assert args.session_command == "frame"
+    assert args.frame == 24
+
 
 def test_main_returns_zero_for_success(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
