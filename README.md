@@ -60,7 +60,20 @@ Use the shelf script at [shelf_script/start_hrpyc_server_shelf.py](./shelf_scrip
 
 ## Local Houdini Docs
 
-The repo-local skill at [skills/houdini-cli/SKILL.md](./skills/houdini-cli/SKILL.md) contains the local Houdini docs preparation flow, including how to prepare `help_prepared/` for raw `rg` lookup.
+If you want repo-local Houdini product docs for raw `rg` lookup:
+
+1. Check whether `skills/houdini-cli/help_prepared/` already exists.
+2. If it does not, copy your local Houdini help folder into `skills/houdini-cli/help/`.
+   The source usually matches an install path like `..\Houdini xx.x.xx\houdini\help`.
+3. Run:
+
+```powershell
+python skills/houdini-cli/scripts/prepare_houdini_help.py
+```
+
+This builds a filtered searchable text corpus in `skills/houdini-cli/help_prepared/` without modifying the copied help source.
+
+After `help_prepared/` exists, the raw copied `skills/houdini-cli/help/` folder is no longer needed.
 
 ## Quick Check
 
