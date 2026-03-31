@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 
 from ..format.envelopes import success_result
 from ..runtime.timeouts import EVAL_TIMEOUT_SECONDS
-from ..transport.rpyc import connect, sync_request_timeout
+from ..transport.rpyc import connect, localize, sync_request_timeout
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -20,19 +18,32 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 def handle_eval(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         with sync_request_timeout(session, EVAL_TIMEOUT_SECONDS):
-            stdout_capture = io.StringIO()
-            stderr_capture = io.StringIO()
-            exec_globals = {"hou": session.hou, "__builtins__": __builtins__}
+            namespace = session.connection.namespace
+            namespace["_houdini_cli_eval_code"] = args.code
+            session.connection.execute(
+                """
+import contextlib as _houdini_cli_contextlib
+import io as _houdini_cli_io
+import hou as _houdini_cli_hou
 
-            with (
-                contextlib.redirect_stdout(stdout_capture),
-                contextlib.redirect_stderr(stderr_capture),
-            ):
-                exec(args.code, exec_globals)
+_houdini_cli_stdout = _houdini_cli_io.StringIO()
+_houdini_cli_stderr = _houdini_cli_io.StringIO()
+_houdini_cli_globals = {"hou": _houdini_cli_hou, "__builtins__": __builtins__}
+
+with (
+    _houdini_cli_contextlib.redirect_stdout(_houdini_cli_stdout),
+    _houdini_cli_contextlib.redirect_stderr(_houdini_cli_stderr),
+):
+    exec(_houdini_cli_eval_code, _houdini_cli_globals)
+
+_houdini_cli_eval_stdout = _houdini_cli_stdout.getvalue()
+_houdini_cli_eval_stderr = _houdini_cli_stderr.getvalue()
+"""
+            )
 
             return success_result(
                 {
-                    "stdout": stdout_capture.getvalue(),
-                    "stderr": stderr_capture.getvalue(),
+                    "stdout": localize(namespace["_houdini_cli_eval_stdout"]),
+                    "stderr": localize(namespace["_houdini_cli_eval_stderr"]),
                 }
             )

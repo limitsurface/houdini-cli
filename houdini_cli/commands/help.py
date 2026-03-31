@@ -42,6 +42,17 @@ HELP_TREE = {
                     "uv run houdini-cli session frame 24",
                 ],
             },
+            "screenshot": {
+                "usage": "houdini-cli session screenshot [--pane-name <name> | --index <n>] [--output <path>] [--frame <n>] [--width <px>] [--height <px>]",
+                "examples": [
+                    "uv run houdini-cli session screenshot --pane-name panetab1",
+                    "uv run houdini-cli session screenshot --index 0 --output '$HIP/houdini_cli/screenshots/view.png'",
+                ],
+                "notes": [
+                    "requires graphical Houdini UI",
+                    "when multiple Scene Viewers are active, use --pane-name or --index",
+                ],
+            },
         }
     },
     "eval": {
