@@ -26,16 +26,20 @@ HELP_NOTES = [
 
 HELP_TREE = {
     "ping": {
+        "description": "Verify that Houdini is reachable over hrpyc/rpyc.",
         "usage": "houdini-cli ping",
         "examples": ["uv run houdini-cli ping"],
     },
     "session": {
+        "description": "Inspect or control session-level state such as connectivity, frame, and viewport screenshots.",
         "children": {
             "ping": {
+                "description": "Verify that Houdini is reachable over hrpyc/rpyc.",
                 "usage": "houdini-cli session ping",
                 "examples": ["uv run houdini-cli session ping"],
             },
             "frame": {
+                "description": "Read or set the current timeline frame.",
                 "usage": "houdini-cli session frame [<frame>]",
                 "examples": [
                     "uv run houdini-cli session frame",
@@ -43,6 +47,7 @@ HELP_TREE = {
                 ],
             },
             "screenshot": {
+                "description": "Capture a screenshot from a specific Scene Viewer pane.",
                 "usage": "houdini-cli session screenshot [--pane-name <name> | --index <n>] [--output <path>] [--frame <n>] [--width <px>] [--height <px>]",
                 "examples": [
                     "uv run houdini-cli session screenshot --pane-name panetab1",
@@ -56,20 +61,28 @@ HELP_TREE = {
         }
     },
     "eval": {
+        "description": "Execute Python against the live Houdini session when no structured command fits.",
         "usage": "houdini-cli eval --code <python>",
         "examples": ['uv run houdini-cli eval --code "print(hou.applicationVersionString())"'],
     },
     "parm": {
+        "description": "Read menus and values from parameters and apply structured parameter edits.",
+        "notes": [
+            "For OpenCL nodes after kernel edits, prefer: houdini-cli opencl sync <node-path>",
+        ],
         "children": {
             "get": {
+                "description": "Read a parameter value or full structured parameter payload.",
                 "usage": "houdini-cli parm get <parm-path> [--full]",
                 "examples": ["uv run houdini-cli parm get /obj/cli_attrib_live/box1/sizex"],
             },
             "menu": {
+                "description": "Inspect the menu items available on a parameter.",
                 "usage": "houdini-cli parm menu <parm-path>",
                 "examples": ["uv run houdini-cli parm menu /obj/cli_attrib_live/box1/type"],
             },
             "set": {
+                "description": "Apply scalar or structured parameter values.",
                 "usage": "houdini-cli parm set <parm-path> --json <payload-or-'-'> [--full]",
                 "examples": [
                     'uv run houdini-cli parm set /obj/cli_attrib_live/box1/sizex --json "2.5"',
@@ -79,55 +92,114 @@ HELP_TREE = {
         }
     },
     "node": {
+        "description": "Inspect nodes, connections, errors, and apply structured node edits.",
+        "notes": [
+            "For OpenCL nodes after kernel edits, use: houdini-cli opencl sync <node-path>",
+        ],
         "children": {
-            "create": {"usage": "houdini-cli node create <parent-path> <node-type> [--name <node-name>]"},
-            "delete": {"usage": "houdini-cli node delete <node-path>"},
+            "create": {
+                "description": "Create a new node under a parent network.",
+                "usage": "houdini-cli node create <parent-path> <node-type> [--name <node-name>]",
+            },
+            "delete": {
+                "description": "Delete a node.",
+                "usage": "houdini-cli node delete <node-path>",
+            },
             "get": {
+                "description": "Read a focused node summary or a structured node section.",
                 "usage": "houdini-cli node get <node-path> [--section parms|inputs|full]",
                 "examples": ["uv run houdini-cli node get /obj/cli_attrib_live/OUT --section inputs"],
             },
-            "errors": {"usage": "houdini-cli node errors <node-path> [<node-path> ...]"},
-            "connections": {"usage": "houdini-cli node connections <node-path>"},
+            "errors": {
+                "description": "Read errors, warnings, and messages from one or more nodes.",
+                "usage": "houdini-cli node errors <node-path> [<node-path> ...]",
+            },
+            "connections": {
+                "description": "Read stable explicit input/output connection data for a node.",
+                "usage": "houdini-cli node connections <node-path>",
+            },
             "set": {
+                "description": "Apply structured node data to parms, inputs, or the full node payload.",
                 "usage": "houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>",
             },
-            "list": {"usage": "houdini-cli node list <root-path> [--max-depth N] [--max-nodes N]"},
-            "find": {"usage": "houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT]"},
-            "summary": {"usage": "houdini-cli node summary <root-path> [--max-depth N] [--max-nodes N]"},
-            "inspect": {"usage": "houdini-cli node inspect <node-path>"},
+            "list": {
+                "description": "List nodes under a root path with bounded traversal.",
+                "usage": "houdini-cli node list <root-path> [--max-depth N] [--max-nodes N]",
+            },
+            "find": {
+                "description": "Search for nodes by type, category, or partial name.",
+                "usage": "houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT]",
+            },
+            "summary": {
+                "description": "Summarize a node tree with bounded traversal.",
+                "usage": "houdini-cli node summary <root-path> [--max-depth N] [--max-nodes N]",
+            },
+            "inspect": {
+                "description": "Inspect a node in more detail than the default summary.",
+                "usage": "houdini-cli node inspect <node-path>",
+            },
             "nav": {
+                "description": "Navigate a Network Editor to one or more nodes.",
                 "usage": "houdini-cli node nav <node-path> [<node-path> ...] [--no-frame] [--no-select] [--no-current]",
                 "notes": ["requires shared parent network and graphical Houdini UI"],
             },
         }
     },
     "cop": {
+        "description": "Inspect cooked Copernicus image/layer data.",
         "children": {
             "sample": {
+                "description": "Sample one or more pixel locations from a COP output.",
                 "usage": "houdini-cli cop sample <node-path> [--output <index-or-name>] (--x X --y Y | --points <json-or-'-'>)",
             },
         }
     },
     "opencl": {
+        "description": "Synchronize OpenCL node bindings, visible signature rows, and generated spare parameters from kernel code.",
+        "notes": [
+            "After editing an OpenCL kernel, run: houdini-cli opencl sync <node-path>",
+            "Use --bindings-only when you want to refresh bindings/parms without changing the visible signature.",
+        ],
         "children": {
-            "sync": {"usage": "houdini-cli opencl sync <node-path> [--clear]"},
+            "sync": {
+                "description": "Refresh an OpenCL node from its kernel #bind directives, including bindings, signature rows, and generated spare parms.",
+                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only]",
+                "examples": [
+                    "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1",
+                    "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only",
+                    "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --clear",
+                ],
+            },
         }
     },
     "attrib": {
+        "description": "Inspect geometry attributes with summary-first reads.",
         "children": {
-            "list": {"usage": "houdini-cli attrib list <node-path> [--class point|prim|vertex|detail]"},
+            "list": {
+                "description": "List attributes on a node, optionally filtered by class.",
+                "usage": "houdini-cli attrib list <node-path> [--class point|prim|vertex|detail]",
+            },
             "get": {
+                "description": "Read attribute metadata and sampled values.",
                 "usage": "houdini-cli attrib get <node-path> <attrib-name> --class point|prim|vertex|detail [--element N] [--limit N]",
             },
         }
     },
     "nodetype": {
+        "description": "Discover available node types by category, query, or prefix.",
         "children": {
-            "list": {"usage": "houdini-cli nodetype list --category obj|sop|cop|vop|rop|lop|dop|shop [--limit N]"},
+            "list": {
+                "description": "List node types for a category.",
+                "usage": "houdini-cli nodetype list --category obj|sop|cop|vop|rop|lop|dop|shop [--limit N]",
+            },
             "find": {
+                "description": "Search node types by query text or prefix.",
                 "usage": "houdini-cli nodetype find --category obj|sop|cop|vop|rop|lop|dop|shop (--query TEXT | --prefix TEXT) [--limit N]",
             },
-            "get": {"usage": "houdini-cli nodetype get --category obj|sop|cop|vop|rop|lop|dop|shop <type-key>"},
+            "get": {
+                "description": "Read details for a specific node type key.",
+                "usage": "houdini-cli nodetype get --category obj|sop|cop|vop|rop|lop|dop|shop <type-key>",
+            },
         }
     },
 }
@@ -161,11 +233,28 @@ def _topic_payload(command_path: list[str]) -> dict:
             "path": [],
             "rules": HELP_RULES,
             "commands": sorted(HELP_TREE.keys()),
+            "command_descriptions": {name: node.get("description", "") for name, node in sorted(HELP_TREE.items())},
             "notes": HELP_NOTES,
+            "workflows": [
+                {
+                    "task": "After editing an OpenCL kernel",
+                    "command": "houdini-cli opencl sync <node-path>",
+                },
+                {
+                    "task": "Inspect explicit node wiring",
+                    "command": "houdini-cli node connections <node-path>",
+                },
+                {
+                    "task": "Capture a viewport screenshot",
+                    "command": "houdini-cli session screenshot --pane-name <pane>",
+                },
+            ],
         }
 
     node = _find_help_node(command_path)
     payload = {"path": command_path}
+    if "description" in node:
+        payload["description"] = node["description"]
     if "usage" in node:
         payload["usage"] = node["usage"]
     if "examples" in node:
@@ -174,6 +263,10 @@ def _topic_payload(command_path: list[str]) -> dict:
         payload["notes"] = node["notes"]
     if "children" in node:
         payload["subcommands"] = sorted(node["children"].keys())
+        payload["subcommand_descriptions"] = {
+            name: child.get("description", "")
+            for name, child in sorted(node["children"].items())
+        }
     return payload
 
 

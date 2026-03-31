@@ -34,6 +34,12 @@ From a local clone instead:
 python -m pipx install .
 ```
 
+To refresh an existing `pipx` install from a local clone after pulling changes:
+
+```powershell
+python -m pipx install --force .
+```
+
 Direct install with `pip`:
 
 ```powershell
@@ -61,4 +67,33 @@ The repo-local skill at [skills/houdini-cli/SKILL.md](./skills/houdini-cli/SKILL
 ```powershell
 houdini-cli ping
 houdini-cli help
+```
+
+## Common Workflows
+
+Inspect explicit node wiring:
+
+```powershell
+houdini-cli node connections /obj/geo1/null1
+houdini-cli node get /obj/geo1/null1 --section inputs
+```
+
+After editing an OpenCL kernel:
+
+```powershell
+houdini-cli opencl sync /obj/geo1/work_here/opencl1
+houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only
+```
+
+Capture a viewport screenshot:
+
+```powershell
+houdini-cli session screenshot --pane-name panetab1
+houdini-cli session screenshot --index 0 --output "$HIP/houdini_cli/screenshots/view.png"
+```
+
+Sample cooked COP output:
+
+```powershell
+houdini-cli cop sample /obj/fixes_here/copnet1/opencl1 --x 128 --y 128
 ```
