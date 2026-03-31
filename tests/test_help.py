@@ -34,6 +34,20 @@ def test_handle_help_group_lists_subcommands() -> None:
     assert "set" in result["data"]["subcommand_descriptions"]
 
 
+def test_handle_help_parm_set_mentions_batched_node_edits() -> None:
+    result = help_command.handle_help(Namespace(command_path=["parm", "set"]))
+
+    assert result["ok"] is True
+    assert "node set" in result["data"]["notes"][0]
+
+
+def test_handle_help_node_set_mentions_batching() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "set"]))
+
+    assert result["ok"] is True
+    assert "--section parms" in result["data"]["notes"][0]
+
+
 def test_handle_help_session_frame_topic() -> None:
     result = help_command.handle_help(Namespace(command_path=["session", "frame"]))
 

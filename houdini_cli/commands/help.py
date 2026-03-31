@@ -88,6 +88,9 @@ HELP_TREE = {
                     'uv run houdini-cli parm set /obj/cli_attrib_live/box1/sizex --json "2.5"',
                     '\'{"value":[1,2,3]}\' | uv run houdini-cli parm set /obj/cli_attrib_live/box1/t --full --json -',
                 ],
+                "notes": [
+                    "For multiple parameter edits on the same node, prefer: houdini-cli node set <node-path> --section parms --json ...",
+                ],
             },
         }
     },
@@ -121,6 +124,9 @@ HELP_TREE = {
             "set": {
                 "description": "Apply structured node data to parms, inputs, or the full node payload.",
                 "usage": "houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>",
+                "notes": [
+                    "Use --section parms to batch multiple parameter edits on one node instead of repeating parm set.",
+                ],
             },
             "list": {
                 "description": "List nodes under a root path with bounded traversal.",
