@@ -21,6 +21,7 @@ class FakeOpenclNode:
         self.kernel_parm = FakeParm("#bind layer src? val=0\n#bind layer !&dst\n#bind parm gain float val=2\n")
         self.runover_parm = FakeParm("layer")
         self._group = FakeParmTemplateGroup()
+        self.signature_data = {"inputs": [{"input#_name": "src", "input#_optional": True}], "outputs": [{"output#_name": "dst"}]}
 
     def path(self):
         return "/obj/cops/opencl1"
@@ -46,6 +47,9 @@ class FakeOpenclNode:
 
     def setParmTemplateGroup(self, group):
         self._group = group.copy()
+
+    def parmsAsData(self, brief=False):
+        return self.signature_data
 
 
 class FakeTemplate:
@@ -223,23 +227,161 @@ def test_handle_sync_rebuilds_signature_and_bindings(monkeypatch) -> None:
     monkeypatch.setattr(opencl, "localize", lambda value: value)
 
     result = opencl.handle_sync(
-        Namespace(host="localhost", port=18811, node_path="/obj/cops/opencl1", clear=False)
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+        )
     )
 
     assert result["ok"] is True
-    count_payload = node_obj.set_parms_calls[-2]
-    payload = node_obj.set_parms_calls[-1]
-    assert count_payload == {"inputs": 1, "outputs": 1, "bindings": 3}
+    assert node_obj.set_parms_calls[0] == {"bindings": 0}
+    assert node_obj.set_parms_calls[1] == {"bindings": 3}
+    assert node_obj.set_parms_calls[2]["bindings3_name"] == "gain"
+    assert node_obj.set_parms_calls[2]["bindings3_fval"] == 2.0
+    assert node_obj.set_parms_calls[3] == {"inputs": 0, "outputs": 0}
+    assert node_obj.set_parms_calls[4] == {"inputs": 1, "outputs": 1}
+    payload = node_obj.set_parms_calls[5]
     assert payload["input1_name"] == "src"
     assert payload["input1_optional"] is True
     assert payload["output1_name"] == "dst"
-    assert payload["bindings3_name"] == "gain"
-    assert payload["bindings3_fval"] == 2.0
     assert node_obj.runover_parm.last_set == "layer"
     assert result["data"]["spare_parms"] == ["gain"]
+    assert result["data"]["bindings_only"] is False
     folder = node_obj._group.entries()[0]
     assert folder.name() == "folder_generatedparms_kernelcode"
     assert [child.name() for child in folder.parmTemplates()] == ["gain"]
+
+
+def test_handle_sync_bindings_only_leaves_signature_untouched(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True, optional=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+        _binding(name="gain", type="float", portname="gain", fval=2.0, defval=True),
+    ]
+    node_obj = FakeOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert node_obj.set_parms_calls[0] == {"bindings": 0}
+    assert node_obj.set_parms_calls[1] == {"bindings": 3}
+    assert node_obj.set_parms_calls[2]["bindings3_name"] == "gain"
+    assert all("inputs" not in payload or payload == {"bindings": 0} for payload in node_obj.set_parms_calls[:3])
+    assert len(node_obj.set_parms_calls) == 3
+    assert result["data"]["bindings_only"] is True
+    assert result["data"]["spare_parms"] == ["gain"]
+    assert result["data"]["inputs"] == [{"name": "src", "type": "floatn", "optional": True}]
+    assert result["data"]["outputs"] == [{"name": "dst", "type": "floatn"}]
+
+
+def test_handle_sync_groups_ports_and_preserves_metadata(monkeypatch) -> None:
+    bindings = [
+        _binding(name="size_ref", type="layer", portname="size_ref", readable=False, writeable=False, optional=True),
+        _binding(name="stamp0", type="layer", portname="stamp0", readable=True),
+        _binding(name="geoP", type="attribute", portname="geo", attribute="P", attribclass="point", attribsize=3),
+        _binding(
+            name="geoid",
+            type="attribute",
+            portname="geo",
+            attribute="id",
+            attribclass="point",
+            attribtype="int",
+            optional=True,
+        ),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+    ]
+    node_obj = FakeOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings, runover="")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["inputs"] == [
+        {"name": "size_ref", "type": "metadata", "optional": True},
+        {"name": "stamp0", "type": "floatn", "optional": False},
+        {"name": "geo", "type": "geo", "optional": False},
+    ]
+    assert result["data"]["outputs"] == [{"name": "dst", "type": "floatn"}]
+    signature_payload = node_obj.set_parms_calls[5]
+    assert signature_payload["input1_name"] == "size_ref"
+    assert signature_payload["input1_type"] == "metadata"
+    assert signature_payload["input2_name"] == "stamp0"
+    assert signature_payload["input3_name"] == "geo"
+    assert signature_payload["input3_type"] == "geo"
+
+
+def test_handle_sync_preserves_existing_signature_order(monkeypatch) -> None:
+    bindings = [
+        _binding(name="size_ref", type="layer", portname="size_ref", readable=False, writeable=False, optional=True),
+        _binding(name="stamp0", type="layer", portname="stamp0", readable=True),
+        _binding(name="stamp1", type="layer", portname="stamp1", readable=True, optional=True),
+        _binding(name="cam", type="layer", portname="cam", readable=True),
+        _binding(name="geoP", type="attribute", portname="geo", attribute="P", attribclass="point", attribsize=3),
+        _binding(name="extra_bias", type="float", portname="extra_bias", fval=0.5, defval=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj.signature_data = {
+        "inputs": [
+            {"input#_name": "size_ref", "input#_type": "metadata", "input#_optional": True},
+            {"input#_name": "stamp0"},
+            {"input#_name": "stamp1", "input#_optional": True},
+            {"input#_name": "cam"},
+            {"input#_name": "geo", "input#_type": "geo"},
+        ],
+        "outputs": [{"output#_name": "dst"}],
+    }
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings, runover="")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["inputs"] == [
+        {"name": "size_ref", "type": "metadata", "optional": True},
+        {"name": "stamp0", "type": "floatn", "optional": False},
+        {"name": "stamp1", "type": "floatn", "optional": True},
+        {"name": "cam", "type": "floatn", "optional": False},
+        {"name": "geo", "type": "geo", "optional": False},
+    ]
+    signature_payload = node_obj.set_parms_calls[5]
+    assert [signature_payload[f"input{i}_name"] for i in range(1, 6)] == [
+        "size_ref",
+        "stamp0",
+        "stamp1",
+        "cam",
+        "geo",
+    ]
 
 
 def test_signature_type_maps_vdb() -> None:

@@ -34,6 +34,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         action="store_true",
         help="Clear existing signature and bindings before rebuilding.",
     )
+    sync_parser.add_argument(
+        "--bindings-only",
+        action="store_true",
+        help="Update binding rows and generated spare parms without changing visible inputs/outputs.",
+    )
     sync_parser.set_defaults(handler=handle_sync)
 
 
@@ -206,79 +211,230 @@ def _sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> li
     if not desired_bindings:
         return []
 
+    return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
+
+
+def _binding_row_values(bindings: list[Any]) -> dict[str, Any]:
+    parm_values: dict[str, Any] = {}
+    for index, binding in enumerate(bindings, start=1):
+        parm_values.update(_binding_parm_values(index, binding))
+    return parm_values
+
+
+def _port_signature_entries(bindings: list[Any], *, output: bool) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    grouped_indices: dict[tuple[str, str], int] = {}
+
+    for binding in bindings:
+        binding_type = str(_binding_scalar(binding, "type"))
+        readable = bool(_binding_scalar(binding, "readable"))
+        writeable = bool(_binding_scalar(binding, "writeable"))
+        optional = bool(_binding_scalar(binding, "optional"))
+
+        if output:
+            if not writeable:
+                continue
+        else:
+            if binding_type == "layer" and not readable and not writeable:
+                entries.append(
+                    {
+                        "name": str(_binding_scalar(binding, "name")),
+                        "type": "metadata",
+                        "optional": optional,
+                        "precision": str(_binding_scalar(binding, "precision")),
+                    }
+                )
+                continue
+            if not readable:
+                continue
+
+        if binding_type == "layer":
+            entries.append(
+                {
+                    "name": str(_binding_scalar(binding, "name")),
+                    "type": _signature_type(binding_type, binding, output=output),
+                    "optional": optional,
+                    "precision": str(_binding_scalar(binding, "precision")),
+                }
+            )
+            continue
+
+        if binding_type not in {"attribute", "volume", "vdb"}:
+            continue
+
+        portname = str(_binding_scalar(binding, "portname"))
+        signature_type = _signature_type(binding_type, binding, output=output)
+        key = (signature_type, portname)
+        existing_index = grouped_indices.get(key)
+        if existing_index is None:
+            grouped_indices[key] = len(entries)
+            entries.append(
+                {
+                    "name": portname,
+                    "type": signature_type,
+                    "optional": optional,
+                    "precision": str(_binding_scalar(binding, "precision")),
+                }
+            )
+        else:
+            entries[existing_index]["optional"] = bool(entries[existing_index]["optional"]) and optional
+
+    return entries
+
+
+def _existing_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[str, Any]]:
     try:
-        opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
-        session.connection.modules.vexpressionmenu.createSpareParmsFromOCLBindings(
-            opencl_node,
-            "kernelcode",
-        )
-        return [_spare_parm_name(binding) for binding in desired_bindings]
+        data = localize(opencl_node.parmsAsData(brief=False))
     except Exception:
-        return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
+        return []
+
+    section_name = "outputs" if output else "inputs"
+    entries = data.get(section_name)
+    if not isinstance(entries, list):
+        return []
+
+    name_key = "output#_name" if output else "input#_name"
+    type_key = "output#_type" if output else "input#_type"
+    optional_key = "input#_optional"
+
+    result: list[dict[str, Any]] = []
+    for row in entries:
+        if not isinstance(row, dict):
+            continue
+        name = row.get(name_key)
+        if not name:
+            continue
+        entry: dict[str, Any] = {
+            "name": str(name),
+            "type": str(row.get(type_key) or "floatn"),
+            "optional": bool(row.get(optional_key, False)) if not output else False,
+        }
+        result.append(entry)
+    return result
 
 
-def _apply_signature(session: Any, opencl_node: Any, bindings: list[Any], *, clear: bool) -> dict[str, Any]:
-    input_bindings = [
-        binding
-        for binding in bindings
-        if str(_binding_scalar(binding, "type")) in {"layer", "attribute", "volume", "vdb"}
-        and bool(_binding_scalar(binding, "readable"))
-    ]
-    output_bindings = [
-        binding
-        for binding in bindings
-        if str(_binding_scalar(binding, "type")) in {"layer", "attribute", "volume", "vdb"}
-        and bool(_binding_scalar(binding, "writeable"))
-    ]
+def _signature_key(entry: dict[str, Any]) -> tuple[str, str]:
+    return (str(entry["name"]), str(entry["type"]))
 
-    if clear:
-        opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
 
-    spare_parms = _sync_spare_parms(session, opencl_node, bindings)
+def _preserve_signature_order(existing: list[dict[str, Any]], desired: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not existing or not desired:
+        return desired
 
-    count_values: dict[str, Any] = {
-        "inputs": len(input_bindings),
-        "outputs": len(output_bindings),
-        "bindings": len(bindings),
-    }
-    opencl_node.setParms(count_values)
+    remaining: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    desired_order: list[tuple[str, str]] = []
+    for entry in desired:
+        key = _signature_key(entry)
+        remaining.setdefault(key, []).append(entry)
+        desired_order.append(key)
+
+    preserved: list[dict[str, Any]] = []
+    for entry in existing:
+        key = _signature_key(entry)
+        bucket = remaining.get(key)
+        if bucket:
+            preserved.append(bucket.pop(0))
+            if not bucket:
+                remaining.pop(key, None)
+
+    for key in desired_order:
+        bucket = remaining.get(key)
+        if bucket:
+            preserved.extend(bucket)
+            remaining.pop(key, None)
+
+    return preserved
+
+
+def _summary_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[str, Any]]:
+    entries = _existing_signature_entries(opencl_node, output=output)
+    if output:
+        return [{"name": entry["name"], "type": entry["type"]} for entry in entries]
+    return [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in entries]
+
+
+def _sync_bindings(opencl_node: Any, bindings: list[Any]) -> None:
+    # Rebuild binding rows from an empty multiparm table so stale fields from
+    # previous row kinds do not survive onto newly generated rows.
+    opencl_node.setParms({"bindings": 0})
+    if not bindings:
+        return
+
+    opencl_node.setParms({"bindings": len(bindings)})
+    opencl_node.setParms(_binding_row_values(bindings))
+
+
+def _sync_signature(
+    opencl_node: Any,
+    input_entries: list[dict[str, Any]],
+    output_entries: list[dict[str, Any]],
+) -> None:
+    opencl_node.setParms({"inputs": 0, "outputs": 0})
+    opencl_node.setParms({"inputs": len(input_entries), "outputs": len(output_entries)})
 
     parm_values: dict[str, Any] = {}
 
-    for index, binding in enumerate(input_bindings, start=1):
-        binding_type = str(_binding_scalar(binding, "type"))
-        parm_values[f"input{index}_name"] = str(_binding_scalar(binding, "name"))
-        parm_values[f"input{index}_type"] = _signature_type(binding_type, binding, output=False)
-        parm_values[f"input{index}_optional"] = bool(_binding_scalar(binding, "optional"))
+    for index, entry in enumerate(input_entries, start=1):
+        parm_values[f"input{index}_name"] = str(entry["name"])
+        parm_values[f"input{index}_type"] = str(entry["type"])
+        parm_values[f"input{index}_optional"] = bool(entry["optional"])
 
-    for index, binding in enumerate(output_bindings, start=1):
-        binding_type = str(_binding_scalar(binding, "type"))
-        parm_values[f"output{index}_name"] = str(_binding_scalar(binding, "name"))
-        parm_values[f"output{index}_type"] = _signature_type(binding_type, binding, output=True)
+    for index, entry in enumerate(output_entries, start=1):
+        parm_values[f"output{index}_name"] = str(entry["name"])
+        parm_values[f"output{index}_type"] = str(entry["type"])
         parm_values[f"output{index}_metadata"] = "first"
-        parm_values[f"output{index}_precision"] = str(_binding_scalar(binding, "precision"))
+        parm_values[f"output{index}_precision"] = str(entry["precision"])
         parm_values[f"output{index}_typeinfo"] = "node"
         parm_values[f"output{index}_metaname"] = ""
 
-    for index, binding in enumerate(bindings, start=1):
-        parm_values.update(_binding_parm_values(index, binding))
-    opencl_node.setParms(parm_values)
+    if parm_values:
+        opencl_node.setParms(parm_values)
+
+
+def _apply_signature(
+    session: Any,
+    opencl_node: Any,
+    bindings: list[Any],
+    *,
+    clear: bool,
+    bindings_only: bool,
+) -> dict[str, Any]:
+    input_entries = _port_signature_entries(bindings, output=False)
+    output_entries = _port_signature_entries(bindings, output=True)
+
+    if not bindings_only and not clear:
+        input_entries = _preserve_signature_order(
+            _existing_signature_entries(opencl_node, output=False),
+            input_entries,
+        )
+        output_entries = _preserve_signature_order(
+            _existing_signature_entries(opencl_node, output=True),
+            output_entries,
+        )
+
+    if clear:
+        if bindings_only:
+            opencl_node.setParms({"bindings": 0})
+        else:
+            opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
+
+    spare_parms = _sync_spare_parms(session, opencl_node, bindings)
+
+    _sync_bindings(opencl_node, bindings)
+    if not bindings_only:
+        _sync_signature(opencl_node, input_entries, output_entries)
+
     return {
-        "inputs": [
-            {
-                "name": str(_binding_scalar(binding, "name")),
-                "type": _signature_type(str(_binding_scalar(binding, "type")), binding, output=False),
-                "optional": bool(_binding_scalar(binding, "optional")),
-            }
-            for binding in input_bindings
-        ],
-        "outputs": [
-            {
-                "name": str(_binding_scalar(binding, "name")),
-                "type": _signature_type(str(_binding_scalar(binding, "type")), binding, output=True),
-            }
-            for binding in output_bindings
-        ],
+        "inputs": (
+            _summary_signature_entries(opencl_node, output=False)
+            if bindings_only
+            else [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in input_entries]
+        ),
+        "outputs": (
+            _summary_signature_entries(opencl_node, output=True)
+            if bindings_only
+            else [{"name": entry["name"], "type": entry["type"]} for entry in output_entries]
+        ),
         "spare_parms": spare_parms,
     }
 
@@ -293,7 +449,13 @@ def handle_sync(args: argparse.Namespace) -> dict:
         bindings = list(session.hou.text.oclExtractBindings(kernel_code))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
 
-        summary = _apply_signature(session, opencl_node, bindings, clear=args.clear)
+        summary = _apply_signature(
+            session,
+            opencl_node,
+            bindings,
+            clear=args.clear,
+            bindings_only=args.bindings_only,
+        )
         if runover:
             opencl_node.parm("options_runover").set(runover)
 
@@ -302,6 +464,7 @@ def handle_sync(args: argparse.Namespace) -> dict:
                 "node_path": localize(opencl_node.path()),
                 "runover": runover,
                 "binding_count": len(bindings),
+                "bindings_only": bool(args.bindings_only),
                 **summary,
             }
         )
