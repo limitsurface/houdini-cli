@@ -22,6 +22,8 @@ The CLI talks to a running Houdini session through `hrpyc`, so Houdini must be o
 
 ## Install
 
+Requires Python 3.12 or newer.
+
 Recommended global install with `pipx`:
 
 ```powershell
@@ -29,8 +31,6 @@ python -m pip install --user pipx
 python -m pipx ensurepath
 python -m pipx install git+https://github.com/limitsurface/houdini-cli.git
 ```
-
-For this private repo, make sure your GitHub credentials are available to git before installing from the repo URL.
 
 From a local clone instead:
 
@@ -52,7 +52,7 @@ python -m pip install .
 
 ## Start Houdini Server
 
-Use the shelf script at [shelf_script/start_hrpyc_server_shelf.py](./shelf_script/start_hrpyc_server_shelf.py) to start `hrpyc` inside Houdini.
+Create a Houdini shelf tool and paste in the Python from [shelf_script/start_hrpyc_server_shelf.py](./shelf_script/start_hrpyc_server_shelf.py). Run that shelf tool inside Houdini to start `hrpyc`.
 
 ## Local Houdini Docs
 
