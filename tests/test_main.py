@@ -27,6 +27,11 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.x == 1
     assert args.y == 2
 
+    args = parser.parse_args(["cop", "info", "/obj/cops/constant1"])
+    assert args.command == "cop"
+    assert args.cop_command == "info"
+    assert args.output is None
+
     args = parser.parse_args(["opencl", "sync", "/obj/cops/opencl1", "--clear"])
     assert args.command == "opencl"
     assert args.opencl_command == "sync"

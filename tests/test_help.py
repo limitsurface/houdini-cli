@@ -187,6 +187,21 @@ def test_handle_help_opencl_validate_topic_has_usage() -> None:
     assert result["data"]["usage"] == "houdini-cli opencl validate <node-path>"
 
 
+def test_handle_help_cop_group_lists_info() -> None:
+    result = help_command.handle_help(Namespace(command_path=["cop"]))
+
+    assert result["ok"] is True
+    assert "info" in result["data"]["subcommands"]
+    assert "Sample" in result["data"]["subcommand_descriptions"]["sample"]
+
+
+def test_handle_help_cop_info_topic_has_usage() -> None:
+    result = help_command.handle_help(Namespace(command_path=["cop", "info"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli cop info <node-path> [--output <index-or-name>]"
+
+
 def test_handle_help_missing_topic_raises() -> None:
     with pytest.raises(ValueError, match="Help topic not found"):
         help_command.handle_help(Namespace(command_path=["missing"]))
