@@ -11,6 +11,16 @@ class FakeHou:
         self._frame = frame
         self.hipFile = self
         self.paneTabType = SimpleNamespace(SceneViewer="SceneViewer")
+        self.geometryViewportType = SimpleNamespace(
+            Perspective="Perspective",
+            Top="Top",
+            Bottom="Bottom",
+            Front="Front",
+            Back="Back",
+            Right="Right",
+            Left="Left",
+        )
+        self.hmath = SimpleNamespace(buildRotate=lambda rotates: FakeRotateBuilder(rotates))
         self.ui = FakeUI([])
 
     def applicationVersionString(self):
@@ -68,16 +78,95 @@ class FakeConnect:
 
 
 class FakePane:
-    def __init__(self, name, pane_type, current=False) -> None:
+    def __init__(self, name, pane_type, current=False, viewport=None) -> None:
         self._name = name
         self._type = pane_type
         self._current = current
+        self._viewport = viewport or FakeViewport()
 
     def name(self):
         return self._name
 
     def type(self):
         return self._type
+
+    def curViewport(self):
+        return self._viewport
+
+
+class FakeRotationMatrix:
+    def __init__(self, rotates) -> None:
+        self._rotates = tuple(rotates)
+
+    def extractRotates(self):
+        return self._rotates
+
+
+class FakeRotateBuilder:
+    def __init__(self, rotates) -> None:
+        self._matrix = FakeRotationMatrix(rotates)
+
+    def extractRotationMatrix3(self):
+        return self._matrix
+
+
+class FakeCamera:
+    def __init__(self, perspective=True, translation=(0.0, 0.0, 5.0), pivot=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0)) -> None:
+        self._perspective = perspective
+        self._translation = tuple(translation)
+        self._pivot = tuple(pivot)
+        self._rotation = tuple(rotation)
+
+    def isPerspective(self):
+        return self._perspective
+
+    def translation(self):
+        return self._translation
+
+    def pivot(self):
+        return self._pivot
+
+    def rotation(self):
+        return FakeRotationMatrix(self._rotation)
+
+    def setTranslation(self, xyz):
+        self._translation = tuple(xyz)
+
+    def setPivot(self, xyz):
+        self._pivot = tuple(xyz)
+
+    def setRotation(self, matrix):
+        self._rotation = tuple(matrix.extractRotates())
+
+
+class FakeViewport:
+    def __init__(self, name="persp1", viewport_type="Perspective", camera=None) -> None:
+        self._name = name
+        self._type = viewport_type
+        self._camera = camera or FakeCamera(perspective=viewport_type == "Perspective")
+        self.frame_selected_calls = 0
+        self.draw_calls = 0
+
+    def name(self):
+        return self._name
+
+    def type(self):
+        return self._type
+
+    def defaultCamera(self):
+        return self._camera
+
+    def frameSelected(self):
+        self.frame_selected_calls += 1
+        self._camera.setTranslation((2.0, 3.5, 5.3))
+        self._camera.setPivot((2.0, 3.5, 4.0))
+
+    def draw(self):
+        self.draw_calls += 1
+
+    def changeType(self, viewport_type):
+        self._type = viewport_type
+        self._camera._perspective = viewport_type == "Perspective"
 
 
 class FakeDesktop:
@@ -247,3 +336,115 @@ def test_handle_screenshot_uses_explicit_pane_name(monkeypatch) -> None:
     assert call["sceneviewer"] is panes[1]
     assert call["res"] == (256, 128)
     assert call["frame"] == 2
+
+
+def test_handle_viewport_get_reads_viewport_state(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    viewport = FakeViewport(camera=FakeCamera(translation=(1.0, 2.0, 3.0), pivot=(4.0, 5.0, 6.0), rotation=(7.0, 8.0, 9.0)))
+    pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True, viewport=viewport)
+    fake_hou.ui = FakeUI([pane])
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_viewport_get(
+        Namespace(host="localhost", port=18811, pane_name=None, index=None)
+    )
+
+    assert result == {
+        "ok": True,
+        "data": {
+            "pane_name": "panetab1",
+            "viewport_name": "persp1",
+            "viewport_type": "Perspective",
+            "is_perspective": True,
+            "translation": [1.0, 2.0, 3.0],
+            "pivot": [4.0, 5.0, 6.0],
+            "rotation": [7.0, 8.0, 9.0],
+        },
+    }
+
+
+def test_handle_viewport_focus_selected_frames_selection(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    viewport = FakeViewport()
+    pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True, viewport=viewport)
+    fake_hou.ui = FakeUI([pane])
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_viewport_focus_selected(
+        Namespace(host="localhost", port=18811, pane_name=None, index=None)
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["action"] == "focus-selected"
+    assert result["data"]["translation"] == [2.0, 3.5, 5.3]
+    assert viewport.frame_selected_calls == 1
+    assert viewport.draw_calls == 1
+
+
+def test_handle_viewport_axis_changes_view_type(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    viewport = FakeViewport()
+    pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True, viewport=viewport)
+    fake_hou.ui = FakeUI([pane])
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_viewport_axis(
+        Namespace(host="localhost", port=18811, pane_name=None, index=None, axis="+x")
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["axis"] == "+x"
+    assert result["data"]["viewport_type"] == "Right"
+    assert result["data"]["is_perspective"] is False
+
+
+def test_handle_viewport_set_updates_perspective_camera(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    viewport = FakeViewport()
+    pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True, viewport=viewport)
+    fake_hou.ui = FakeUI([pane])
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_viewport_set(
+        Namespace(
+            host="localhost",
+            port=18811,
+            pane_name=None,
+            index=None,
+            t=[10.0, 20.0, 30.0],
+            r=[15.0, 25.0, 35.0],
+            pivot=[1.0, 2.0, 3.0],
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["action"] == "set"
+    assert result["data"]["translation"] == [10.0, 20.0, 30.0]
+    assert result["data"]["pivot"] == [1.0, 2.0, 3.0]
+    assert result["data"]["rotation"] == [15.0, 25.0, 35.0]
+
+
+def test_handle_viewport_set_rejects_non_perspective_view(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    viewport = FakeViewport(viewport_type="Top", camera=FakeCamera(perspective=False))
+    pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True, viewport=viewport)
+    fake_hou.ui = FakeUI([pane])
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    with pytest.raises(ValueError, match="only supports perspective views"):
+        session.handle_viewport_set(
+            Namespace(
+                host="localhost",
+                port=18811,
+                pane_name=None,
+                index=None,
+                t=[1.0, 2.0, 3.0],
+                r=None,
+                pivot=None,
+            )
+        )

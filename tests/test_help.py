@@ -99,6 +99,21 @@ def test_handle_help_session_frame_topic() -> None:
     assert result["data"]["usage"] == "houdini-cli session frame [<frame>]"
 
 
+def test_handle_help_session_viewport_axis_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["session", "viewport", "axis"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli session viewport axis <+x|-x|+y|-y|+z|-z|persp> [--pane-name <name> | --index <n>]"
+
+
+def test_handle_help_session_viewport_group_lists_subcommands() -> None:
+    result = help_command.handle_help(Namespace(command_path=["session", "viewport"]))
+
+    assert result["ok"] is True
+    assert result["data"]["subcommands"] == ["axis", "focus-selected", "get", "set"]
+    assert "free-camera state" in result["data"]["subcommand_descriptions"]["get"]
+
+
 def test_handle_help_node_list_topic_mentions_compact_schema() -> None:
     result = help_command.handle_help(Namespace(command_path=["node", "list"]))
 

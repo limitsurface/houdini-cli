@@ -11,6 +11,20 @@ from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 
 _FCUR_FRAME_PATTERN = re.compile(r"Frame\s+(-?\d+(?:\.\d+)?)")
+_VIEWPORT_AXIS_MAP = {
+    "+x": "Right",
+    "-x": "Left",
+    "+y": "Top",
+    "-y": "Bottom",
+    "+z": "Front",
+    "-z": "Back",
+    "persp": "Perspective",
+}
+
+
+def _viewport_type_name(viewport) -> str:
+    viewport_type = str(viewport.type())
+    return viewport_type.rsplit(".", 1)[-1]
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -34,15 +48,7 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         "screenshot",
         help="Capture a screenshot from a Scene Viewer pane.",
     )
-    screenshot_parser.add_argument(
-        "--pane-name",
-        help="Scene Viewer pane name, for example panetab1.",
-    )
-    screenshot_parser.add_argument(
-        "--index",
-        type=int,
-        help="Scene Viewer index from the current desktop ordering.",
-    )
+    _add_scene_viewer_selector_args(screenshot_parser)
     screenshot_parser.add_argument(
         "--output",
         help="Optional output path. Defaults to $HIP/houdini_cli/screenshots/<timestamp>.png",
@@ -66,6 +72,78 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="Output height in pixels (default: 512).",
     )
     screenshot_parser.set_defaults(handler=handle_screenshot)
+
+    viewport_parser = session_subparsers.add_parser(
+        "viewport",
+        help="Read or manipulate the current Scene Viewer viewport.",
+    )
+    viewport_subparsers = viewport_parser.add_subparsers(dest="viewport_command", required=True)
+
+    viewport_get_parser = viewport_subparsers.add_parser(
+        "get",
+        help="Read viewport type and free-camera state.",
+    )
+    _add_scene_viewer_selector_args(viewport_get_parser)
+    viewport_get_parser.set_defaults(handler=handle_viewport_get)
+
+    viewport_focus_parser = viewport_subparsers.add_parser(
+        "focus-selected",
+        help="Frame the current Scene Viewer selection, like Space+F.",
+    )
+    _add_scene_viewer_selector_args(viewport_focus_parser)
+    viewport_focus_parser.set_defaults(handler=handle_viewport_focus_selected)
+
+    viewport_axis_parser = viewport_subparsers.add_parser(
+        "axis",
+        help="Switch the viewport to a fixed orthographic axis view or perspective.",
+    )
+    _add_scene_viewer_selector_args(viewport_axis_parser)
+    viewport_axis_parser.add_argument(
+        "axis",
+        choices=sorted(_VIEWPORT_AXIS_MAP.keys()),
+        help="Axis shorthand: +x -x +y -y +z -z persp",
+    )
+    viewport_axis_parser.set_defaults(handler=handle_viewport_axis)
+
+    viewport_set_parser = viewport_subparsers.add_parser(
+        "set",
+        help="Set free-camera translation, rotation, and optional pivot on the viewport.",
+    )
+    _add_scene_viewer_selector_args(viewport_set_parser)
+    viewport_set_parser.add_argument(
+        "--t",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="Absolute camera translation.",
+    )
+    viewport_set_parser.add_argument(
+        "--r",
+        nargs=3,
+        type=float,
+        metavar=("RX", "RY", "RZ"),
+        help="Absolute camera rotation in degrees.",
+    )
+    viewport_set_parser.add_argument(
+        "--pivot",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="Absolute camera pivot.",
+    )
+    viewport_set_parser.set_defaults(handler=handle_viewport_set)
+
+
+def _add_scene_viewer_selector_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--pane-name",
+        help="Scene Viewer pane name, for example panetab1.",
+    )
+    parser.add_argument(
+        "--index",
+        type=int,
+        help="Scene Viewer index from the current desktop ordering.",
+    )
 
 
 def handle_ping(args: argparse.Namespace) -> dict:
@@ -163,6 +241,27 @@ def _resolve_output_path(session, output: str | None, pane_name: str) -> str:
     return resolved
 
 
+def _resolve_viewport(session, *, pane_name: str | None, index: int | None):
+    viewer = _resolve_scene_viewer(session, pane_name=pane_name, index=index)
+    viewport = viewer.curViewport()
+    if viewport is None:
+        raise ValueError("Scene Viewer has no active viewport")
+    return viewer, viewport
+
+
+def _viewport_camera_payload(viewer, viewport) -> dict:
+    camera = viewport.defaultCamera()
+    return {
+        "pane_name": localize(viewer.name()),
+        "viewport_name": localize(viewport.name()),
+        "viewport_type": str(viewport.type()),
+        "is_perspective": bool(camera.isPerspective()),
+        "translation": [float(value) for value in camera.translation()],
+        "pivot": [float(value) for value in camera.pivot()],
+        "rotation": [float(value) for value in camera.rotation().extractRotates()],
+    }
+
+
 def handle_screenshot(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         viewer = _resolve_scene_viewer(session, pane_name=args.pane_name, index=args.index)
@@ -189,3 +288,55 @@ def handle_screenshot(args: argparse.Namespace) -> dict:
                 "bytes": size,
             }
         )
+
+
+def handle_viewport_get(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        viewer, viewport = _resolve_viewport(session, pane_name=args.pane_name, index=args.index)
+        return success_result(_viewport_camera_payload(viewer, viewport))
+
+
+def handle_viewport_focus_selected(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        viewer, viewport = _resolve_viewport(session, pane_name=args.pane_name, index=args.index)
+        viewport.frameSelected()
+        viewport.draw()
+        payload = _viewport_camera_payload(viewer, viewport)
+        payload["action"] = "focus-selected"
+        return success_result(payload)
+
+
+def handle_viewport_axis(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        viewer, viewport = _resolve_viewport(session, pane_name=args.pane_name, index=args.index)
+        viewport_type = getattr(session.hou.geometryViewportType, _VIEWPORT_AXIS_MAP[args.axis])
+        viewport.changeType(viewport_type)
+        viewport.draw()
+        payload = _viewport_camera_payload(viewer, viewport)
+        payload["action"] = "axis"
+        payload["axis"] = args.axis
+        return success_result(payload)
+
+
+def handle_viewport_set(args: argparse.Namespace) -> dict:
+    if args.t is None and args.r is None and args.pivot is None:
+        raise ValueError("Provide at least one of --t, --r, or --pivot")
+
+    with connect(args.host, args.port) as session:
+        viewer, viewport = _resolve_viewport(session, pane_name=args.pane_name, index=args.index)
+        if _viewport_type_name(viewport) != "Perspective":
+            raise ValueError("Viewport camera set only supports perspective views; use session viewport axis persp first")
+
+        camera = viewport.defaultCamera()
+        if args.r is not None:
+            rotation = session.hou.hmath.buildRotate(tuple(float(value) for value in args.r)).extractRotationMatrix3()
+            camera.setRotation(rotation)
+        if args.t is not None:
+            camera.setTranslation(tuple(float(value) for value in args.t))
+        if args.pivot is not None:
+            camera.setPivot(tuple(float(value) for value in args.pivot))
+        viewport.draw()
+
+        payload = _viewport_camera_payload(viewer, viewport)
+        payload["action"] = "set"
+        return success_result(payload)

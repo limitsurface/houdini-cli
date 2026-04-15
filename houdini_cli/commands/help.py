@@ -90,7 +90,7 @@ HELP_TREE = {
         "examples": ["uv run houdini-cli ping"],
     },
     "session": {
-        "description": "Inspect or control session-level state such as connectivity, frame, and viewport screenshots.",
+        "description": "Inspect or control session-level state such as connectivity, frame, viewport screenshots, and viewport camera state.",
         "children": {
             "ping": {
                 "description": "Verify that Houdini is reachable over hrpyc/rpyc.",
@@ -116,6 +116,36 @@ HELP_TREE = {
                     "requires graphical Houdini UI",
                     "when multiple Scene Viewers are active, use --pane-name or --index",
                 ],
+            },
+            "viewport": {
+                "description": "Read or manipulate the active viewport in a Scene Viewer pane.",
+                "children": {
+                    "get": {
+                        "description": "Read viewport type and current free-camera state.",
+                        "usage": "houdini-cli session viewport get [--pane-name <name> | --index <n>]",
+                    },
+                    "focus-selected": {
+                        "description": "Frame the current Scene Viewer selection, like Space+F in the viewport.",
+                        "usage": "houdini-cli session viewport focus-selected [--pane-name <name> | --index <n>]",
+                        "notes": [
+                            "requires graphical Houdini UI and an active Scene Viewer selection",
+                        ],
+                    },
+                    "axis": {
+                        "description": "Switch the viewport to a fixed axis view or perspective.",
+                        "usage": "houdini-cli session viewport axis <+x|-x|+y|-y|+z|-z|persp> [--pane-name <name> | --index <n>]",
+                        "notes": [
+                            "+x/-x map to right/left, +y/-y map to top/bottom, +z/-z map to front/back",
+                        ],
+                    },
+                    "set": {
+                        "description": "Set the perspective viewport camera translation, rotation, and optional pivot.",
+                        "usage": "houdini-cli session viewport set [--pane-name <name> | --index <n>] [--t X Y Z] [--r RX RY RZ] [--pivot X Y Z]",
+                        "notes": [
+                            "only supports perspective views; switch with `session viewport axis persp` if needed",
+                        ],
+                    },
+                },
             },
         }
     },
@@ -361,6 +391,10 @@ def _topic_payload(command_path: list[str]) -> dict:
                 {
                     "task": "Capture a viewport screenshot",
                     "command": "houdini-cli session screenshot --pane-name <pane>",
+                },
+                {
+                    "task": "Frame the selected object in the viewport",
+                    "command": "houdini-cli session viewport focus-selected --pane-name <pane>",
                 },
             ],
         }

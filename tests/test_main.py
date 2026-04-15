@@ -72,6 +72,19 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.session_command == "frame"
     assert args.frame == 24
 
+    args = parser.parse_args(["session", "viewport", "axis", "+x"])
+    assert args.command == "session"
+    assert args.session_command == "viewport"
+    assert args.viewport_command == "axis"
+    assert args.axis == "+x"
+
+    args = parser.parse_args(["session", "viewport", "set", "--t", "1", "2", "3", "--r", "10", "20", "30"])
+    assert args.command == "session"
+    assert args.session_command == "viewport"
+    assert args.viewport_command == "set"
+    assert args.t == [1.0, 2.0, 3.0]
+    assert args.r == [10.0, 20.0, 30.0]
+
 
 def test_main_returns_zero_for_success(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
