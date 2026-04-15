@@ -8,6 +8,7 @@ from typing import Any
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from ..util.jsonio import load_json_input
+from . import parm
 from . import query
 from .node_common import get_node, node_summary
 
@@ -80,6 +81,7 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     )
     set_parser.set_defaults(handler=handle_set)
 
+    parm.register_node_parms_parser(node_subparsers)
     query.register_parser(node_subparsers)
 
 

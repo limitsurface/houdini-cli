@@ -32,6 +32,16 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.opencl_command == "sync"
     assert args.clear is True
 
+    args = parser.parse_args(["parm", "full", "/obj/geo1/box1/sizex"])
+    assert args.command == "parm"
+    assert args.parm_command == "full"
+
+    args = parser.parse_args(["node", "parms", "find", "/obj/geo1", "--name", "dist"])
+    assert args.command == "node"
+    assert args.node_command == "parms"
+    assert args.node_parms_command == "find"
+    assert args.name == "dist"
+
     args = parser.parse_args(["session", "frame", "24"])
     assert args.command == "session"
     assert args.session_command == "frame"

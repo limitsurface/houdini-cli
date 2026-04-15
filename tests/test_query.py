@@ -204,4 +204,11 @@ def test_handle_inspect(monkeypatch) -> None:
         Namespace(host="localhost", port=18811, node_path="/obj/null1")
     )
     assert result["ok"] is True
-    assert result["data"]["interesting_parms"] == ["display"]
+    assert result["data"] == {
+        "p": "null1",
+        "t": "null",
+        "f": "",
+        "i": ["box1"],
+        "o": [],
+        "parms": ["display"],
+    }

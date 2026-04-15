@@ -43,7 +43,39 @@ HELP_LEGENDS = {
             "node list and node find return compact rows",
             "paths are relative to the requested root when possible",
         ],
-    }
+    },
+    "node_inspect": {
+        "keys": {
+            "p": "path",
+            "t": "type",
+            "f": "flags",
+            "i": "input node refs",
+            "o": "output node refs",
+            "parms": "non-default parameter names",
+        },
+        "flags": {
+            "d": "display",
+            "r": "render",
+            "b": "bypass",
+        },
+        "notes": [
+            "inspect uses sibling-relative node refs when possible",
+        ],
+    },
+    "node_parm_rows": {
+        "cols": {
+            "p": "parm name",
+            "t": "parm template type",
+            "v": "current value",
+            "f": "flags",
+        },
+        "flags": {
+            "n": "non-default",
+        },
+        "notes": [
+            "node parms list and node parms find skip UI-only folder/button parm templates",
+        ],
+    },
 }
 
 HELP_TREE = {
@@ -88,15 +120,20 @@ HELP_TREE = {
         "examples": ['uv run houdini-cli eval --code "print(hou.applicationVersionString())"'],
     },
     "parm": {
-        "description": "Read menus and values from parameters and apply structured parameter edits.",
+        "description": "Read parameter values, structured parameter payloads, menu tokens, and apply parameter edits.",
         "notes": [
             "For OpenCL nodes after kernel edits, prefer: houdini-cli opencl sync <node-path>",
         ],
         "children": {
             "get": {
-                "description": "Read a parameter value or full structured parameter payload.",
-                "usage": "houdini-cli parm get <parm-path> [--full]",
+                "description": "Read the current value for one parameter.",
+                "usage": "houdini-cli parm get <parm-path>",
                 "examples": ["uv run houdini-cli parm get /obj/cli_attrib_live/box1/sizex"],
+            },
+            "full": {
+                "description": "Read the full structured parameter payload for one parameter.",
+                "usage": "houdini-cli parm full <parm-path>",
+                "examples": ["uv run houdini-cli parm full /obj/cli_attrib_live/box1/t"],
             },
             "menu": {
                 "description": "Inspect the menu items available on a parameter.",
@@ -166,9 +203,31 @@ HELP_TREE = {
                     "See `help` root legends.node_rows for compact field meanings.",
                 ],
             },
+            "parms": {
+                "description": "Discover parameters on one node.",
+                "children": {
+                    "list": {
+                        "description": "List parameters on one node in a compact row format.",
+                        "usage": "houdini-cli node parms list <node-path> [--non-default] [--max-parms N]",
+                        "notes": [
+                            "See `help` root legends.node_parm_rows for compact field meanings.",
+                        ],
+                    },
+                    "find": {
+                        "description": "Search parameters on one node in the same compact row format.",
+                        "usage": "houdini-cli node parms find <node-path> [--name TEXT] [--type TYPE] [--non-default] [--max-parms N]",
+                        "notes": [
+                            "See `help` root legends.node_parm_rows for compact field meanings.",
+                        ],
+                    },
+                },
+            },
             "inspect": {
-                "description": "Inspect a node in more detail than the default summary.",
+                "description": "Inspect one node in a compact object format with local connection refs and non-default parm names.",
                 "usage": "houdini-cli node inspect <node-path>",
+                "notes": [
+                    "See `help` root legends.node_inspect for compact field meanings.",
+                ],
             },
             "nav": {
                 "description": "Navigate a Network Editor to one or more nodes.",

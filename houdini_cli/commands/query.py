@@ -75,6 +75,13 @@ def _relative_path(root_path: str, node_path: str) -> str:
     return node_path
 
 
+def _parent_path(node_path: str) -> str:
+    if node_path == "/":
+        return "/"
+    parent = node_path.rsplit("/", 1)[0]
+    return parent or "/"
+
+
 def _flags(summary: dict[str, Any]) -> str:
     return "".join(
         [
@@ -95,6 +102,14 @@ def _compact_row(root_path: str, node: Any) -> list[Any]:
         summary["output_count"],
         _flags(summary),
     ]
+
+
+def _inspect_ref(node_path: str, other_path: str) -> str:
+    node_parent = _parent_path(node_path)
+    other_parent = _parent_path(other_path)
+    if node_parent == other_parent:
+        return other_path.rsplit("/", 1)[-1]
+    return other_path
 
 
 def handle_list(args: argparse.Namespace) -> dict:
@@ -157,9 +172,25 @@ def handle_inspect(args: argparse.Namespace) -> dict:
         with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
             node = get_node(session, args.node_path)
             summary = node_summary(node)
-            summary["interesting_parms"] = [
+            interesting_parms = [
                 localize(parm.name())
-                for parm in node.parms()[:10]
+                for parm in node.parms()
                 if not bool(localize(parm.isAtDefault()))
             ]
-            return success_result(summary)
+            return success_result(
+                {
+                    "p": summary["path"].rsplit("/", 1)[-1],
+                    "t": summary["type"],
+                    "f": _flags(summary),
+                    "i": [
+                        _inspect_ref(summary["path"], localize(other.path()))
+                        for other in node.inputs()
+                        if other is not None
+                    ],
+                    "o": [
+                        _inspect_ref(summary["path"], localize(other.path()))
+                        for other in node.outputs()
+                    ],
+                    "parms": interesting_parms,
+                }
+            )
