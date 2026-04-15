@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, deque
+from collections import deque
 from typing import Any
 
 from ..format.envelopes import success_result
@@ -30,12 +30,6 @@ def register_parser(node_subparsers: argparse._SubParsersAction[argparse.Argumen
     find_parser.add_argument("--max-depth", type=int, default=DEFAULT_MAX_DEPTH)
     find_parser.add_argument("--max-nodes", type=int, default=DEFAULT_MAX_NODES)
     find_parser.set_defaults(handler=handle_find)
-
-    summary_parser = node_subparsers.add_parser("summary", help="Summarize a network.")
-    summary_parser.add_argument("root_path", help="Root node path.")
-    summary_parser.add_argument("--max-depth", type=int, default=DEFAULT_MAX_DEPTH)
-    summary_parser.add_argument("--max-nodes", type=int, default=DEFAULT_MAX_NODES)
-    summary_parser.set_defaults(handler=handle_summary)
 
     inspect_parser = node_subparsers.add_parser("inspect", help="Inspect one node with a focused summary.")
     inspect_parser.add_argument("node_path", help="Node path to inspect.")
@@ -72,17 +66,49 @@ def _match(node: Any, *, type_name: str | None, category: str | None, name: str 
     return True
 
 
+def _relative_path(root_path: str, node_path: str) -> str:
+    if node_path == root_path:
+        return "."
+    root_prefix = root_path.rstrip("/") + "/"
+    if node_path.startswith(root_prefix):
+        return node_path[len(root_prefix) :]
+    return node_path
+
+
+def _flags(summary: dict[str, Any]) -> str:
+    return "".join(
+        [
+            "d" if summary.get("display") else "",
+            "r" if summary.get("render") else "",
+            "b" if summary.get("bypass") else "",
+        ]
+    )
+
+
+def _compact_row(root_path: str, node: Any) -> list[Any]:
+    summary = node_summary(node)
+    return [
+        _relative_path(root_path, summary["path"]),
+        summary["type"],
+        summary["child_count"],
+        summary["input_count"],
+        summary["output_count"],
+        _flags(summary),
+    ]
+
+
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
             root = get_node(session, args.root_path)
             nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-            items = [node_summary(node) for node in nodes[1:]]
+            rows = [_compact_row(args.root_path, node) for node in nodes[1:]]
             return success_result(
                 {
                     "root": args.root_path,
-                    "count": len(items),
-                    "items": items,
+                    "count": len(rows),
+                    "cols": ["p", "t", "cc", "in", "out", "f"],
+                    "rows": rows,
                 },
                 meta={
                     "truncated": truncated,
@@ -97,49 +123,26 @@ def handle_find(args: argparse.Namespace) -> dict:
         with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
             root = get_node(session, args.root_path)
             nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-            items = [
-                node_summary(node)
+            rows = [
+                _compact_row(args.root_path, node)
                 for node in nodes[1:]
                 if _match(node, type_name=args.type_name, category=args.category, name=args.name)
             ]
             return success_result(
                 {
                     "root": args.root_path,
-                    "count": len(items),
-                    "items": items,
-                },
-                meta={
-                    "truncated": truncated,
-                    "max_nodes": args.max_nodes,
-                    "max_depth": args.max_depth,
-                },
-            )
-
-
-def handle_summary(args: argparse.Namespace) -> dict:
-    with connect(args.host, args.port) as session:
-        with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
-            root = get_node(session, args.root_path)
-            nodes, truncated = _traverse(root, args.max_depth, args.max_nodes)
-            descendants = nodes[1:]
-            type_histogram = Counter(node_summary(node)["type"] for node in descendants)
-            terminal_nodes = [
-                node_summary(node)["path"]
-                for node in descendants
-                if node_summary(node)["output_count"] == 0
-            ][:10]
-            entry_nodes = [
-                node_summary(node)["path"]
-                for node in descendants
-                if node_summary(node)["input_count"] == 0
-            ][:10]
-            return success_result(
-                {
-                    "root": args.root_path,
-                    "node_count": len(descendants),
-                    "type_histogram": dict(type_histogram),
-                    "entry_nodes": entry_nodes,
-                    "terminal_nodes": terminal_nodes,
+                    "query": {
+                        key: value
+                        for key, value in {
+                            "type": args.type_name,
+                            "category": args.category,
+                            "name": args.name,
+                        }.items()
+                        if value is not None
+                    },
+                    "count": len(rows),
+                    "cols": ["p", "t", "cc", "in", "out", "f"],
+                    "rows": rows,
                 },
                 meta={
                     "truncated": truncated,

@@ -13,6 +13,8 @@ def test_handle_help_root() -> None:
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
+    assert result["data"]["legends"]["node_rows"]["cols"]["p"] == "path"
+    assert result["data"]["legends"]["node_rows"]["flags"]["b"] == "bypass"
     assert any(item["command"] == "houdini-cli opencl sync <node-path>" for item in result["data"]["workflows"])
 
 
@@ -32,6 +34,15 @@ def test_handle_help_group_lists_subcommands() -> None:
     assert result["data"]["subcommands"] == ["get", "menu", "set"]
     assert "OpenCL" in result["data"]["notes"][0]
     assert "set" in result["data"]["subcommand_descriptions"]
+
+
+def test_handle_help_node_group_lists_updated_subcommands() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node"]))
+
+    assert result["ok"] is True
+    assert "summary" not in result["data"]["subcommands"]
+    assert "find" in result["data"]["subcommands"]
+    assert "compact row format" in result["data"]["subcommand_descriptions"]["find"]
 
 
 def test_handle_help_parm_set_mentions_batched_node_edits() -> None:
@@ -54,6 +65,14 @@ def test_handle_help_session_frame_topic() -> None:
     assert result["ok"] is True
     assert result["data"]["path"] == ["session", "frame"]
     assert result["data"]["usage"] == "houdini-cli session frame [<frame>]"
+
+
+def test_handle_help_node_list_topic_mentions_compact_schema() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "list"]))
+
+    assert result["ok"] is True
+    assert "compact row format" in result["data"]["description"]
+    assert "legends.node_rows" in result["data"]["notes"][1]
 
 
 def test_handle_help_opencl_topic_includes_discovery_context() -> None:

@@ -127,6 +127,11 @@ def test_handle_list(monkeypatch) -> None:
     )
     assert result["ok"] is True
     assert result["data"]["count"] == 2
+    assert result["data"]["cols"] == ["p", "t", "cc", "in", "out", "f"]
+    assert result["data"]["rows"] == [
+        ["box1", "box", 0, 0, 1, ""],
+        ["null1", "null", 0, 1, 0, ""],
+    ]
 
 
 def test_handle_list_truncates(monkeypatch) -> None:
@@ -162,7 +167,8 @@ def test_handle_find(monkeypatch) -> None:
     )
     assert result["ok"] is True
     assert result["data"]["count"] == 1
-    assert result["data"]["items"][0]["type"] == "box"
+    assert result["data"]["query"] == {"type": "box"}
+    assert result["data"]["rows"][0] == ["box1", "box", 0, 0, 1, ""]
 
 
 def test_handle_find_by_name(monkeypatch) -> None:
@@ -185,20 +191,8 @@ def test_handle_find_by_name(monkeypatch) -> None:
 
     assert result["ok"] is True
     assert result["data"]["count"] == 1
-    assert result["data"]["items"][0]["name"] == "null1"
-
-
-def test_handle_summary(monkeypatch) -> None:
-    root, _, _ = _make_tree()
-    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
-    monkeypatch.setattr(query, "localize", lambda value: value)
-
-    result = query.handle_summary(
-        Namespace(host="localhost", port=18811, root_path="/obj", max_depth=1, max_nodes=50)
-    )
-    assert result["ok"] is True
-    assert result["data"]["node_count"] == 2
-    assert result["data"]["type_histogram"]["box"] == 1
+    assert result["data"]["query"] == {"name": "NULL"}
+    assert result["data"]["rows"][0][0] == "null1"
 
 
 def test_handle_inspect(monkeypatch) -> None:

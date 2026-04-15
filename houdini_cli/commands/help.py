@@ -10,7 +10,7 @@ HELP_RULES = [
     "stdout is JSON",
     "prefer structured commands before eval",
     "prefer stdin for complex JSON payloads",
-    "traversal is summary-first by default",
+    "prefer node find before broad node list traversal in large networks",
 ]
 
 HELP_NOTES = [
@@ -23,6 +23,28 @@ HELP_NOTES = [
     "detail attributes do not accept --element",
     "nodetype list and nodetype find are intentionally compact and capped by default",
 ]
+
+HELP_LEGENDS = {
+    "node_rows": {
+        "cols": {
+            "p": "path",
+            "t": "type",
+            "cc": "child_count",
+            "in": "input_count",
+            "out": "output_count",
+            "f": "flags",
+        },
+        "flags": {
+            "d": "display",
+            "r": "render",
+            "b": "bypass",
+        },
+        "notes": [
+            "node list and node find return compact rows",
+            "paths are relative to the requested root when possible",
+        ],
+    }
+}
 
 HELP_TREE = {
     "ping": {
@@ -129,16 +151,20 @@ HELP_TREE = {
                 ],
             },
             "list": {
-                "description": "List nodes under a root path with bounded traversal.",
+                "description": "List nodes under a root path in a compact row format with bounded traversal.",
                 "usage": "houdini-cli node list <root-path> [--max-depth N] [--max-nodes N]",
+                "notes": [
+                    "Prefer node find first in large networks; list is best for shallow local traversal.",
+                    "See `help` root legends.node_rows for compact field meanings.",
+                ],
             },
             "find": {
-                "description": "Search for nodes by type, category, or partial name.",
-                "usage": "houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT]",
-            },
-            "summary": {
-                "description": "Summarize a node tree with bounded traversal.",
-                "usage": "houdini-cli node summary <root-path> [--max-depth N] [--max-nodes N]",
+                "description": "Search for nodes by type, category, or partial name using the same compact row format as list.",
+                "usage": "houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT] [--max-depth N] [--max-nodes N]",
+                "notes": [
+                    "Use this as the default discovery tool in large networks before node list.",
+                    "See `help` root legends.node_rows for compact field meanings.",
+                ],
             },
             "inspect": {
                 "description": "Inspect a node in more detail than the default summary.",
@@ -241,6 +267,7 @@ def _topic_payload(command_path: list[str]) -> dict:
             "commands": sorted(HELP_TREE.keys()),
             "command_descriptions": {name: node.get("description", "") for name, node in sorted(HELP_TREE.items())},
             "notes": HELP_NOTES,
+            "legends": HELP_LEGENDS,
             "workflows": [
                 {
                     "task": "After editing an OpenCL kernel",
