@@ -50,14 +50,6 @@ Direct install with `pip`:
 python -m pip install .
 ```
 
-## Releases
-
-Pushing a tag like `v0.1.0` triggers a GitHub Actions workflow that:
-
-- runs the test suite
-- builds the wheel and sdist
-- creates a GitHub Release with the built artifacts attached
-
 ## Start Houdini Server
 
 Use the shelf script at [shelf_script/start_hrpyc_server_shelf.py](./shelf_script/start_hrpyc_server_shelf.py) to start `hrpyc` inside Houdini.
