@@ -24,6 +24,13 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     opencl_parser = subparsers.add_parser("opencl", help="Inspect and synchronize OpenCL nodes.")
     opencl_subparsers = opencl_parser.add_subparsers(dest="opencl_command", required=True)
 
+    validate_parser = opencl_subparsers.add_parser(
+        "validate",
+        help="Validate an OpenCL node's current signature and wired input types against its kernel.",
+    )
+    validate_parser.add_argument("node_path", help="OpenCL node path.")
+    validate_parser.set_defaults(handler=handle_validate)
+
     sync_parser = opencl_subparsers.add_parser(
         "sync",
         help="Rebuild OpenCL signature and bindings from #bind directives.",
@@ -38,6 +45,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         "--bindings-only",
         action="store_true",
         help="Update binding rows and generated spare parms without changing visible inputs/outputs.",
+    )
+    sync_parser.add_argument(
+        "--disconnect-invalid",
+        action="store_true",
+        help="After syncing, disconnect any wired inputs whose source output type no longer matches the regenerated input type.",
     )
     sync_parser.set_defaults(handler=handle_sync)
 
@@ -353,6 +365,144 @@ def _summary_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[s
     return [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in entries]
 
 
+def _node_messages(opencl_node: Any) -> dict[str, list[str]]:
+    data: dict[str, list[str]] = {}
+    for key in ("errors", "warnings", "messages"):
+        values = getattr(opencl_node, key, None)
+        if callable(values):
+            try:
+                data[key] = [str(localize(value)) for value in values()]
+            except Exception:
+                data[key] = []
+        else:
+            data[key] = []
+    return data
+
+
+def _input_data_types(opencl_node: Any) -> list[str]:
+    try:
+        return [str(localize(value)) for value in opencl_node.inputDataTypes()]
+    except Exception:
+        return []
+
+
+def _output_data_types(node: Any) -> list[str]:
+    try:
+        return [str(localize(value)) for value in node.outputDataTypes()]
+    except Exception:
+        return []
+
+
+def _current_input_connections(opencl_node: Any) -> dict[int, dict[str, Any]]:
+    result: dict[int, dict[str, Any]] = {}
+    try:
+        connections = list(opencl_node.inputConnections())
+    except Exception:
+        return result
+
+    for connection in connections:
+        source_node = connection.inputNode()
+        output_index = int(connection.outputIndex())
+        source_types = _output_data_types(source_node) if source_node is not None else []
+        source_output_type = source_types[output_index] if 0 <= output_index < len(source_types) else None
+        result[int(connection.inputIndex())] = {
+            "from_path": str(localize(source_node.path())) if source_node is not None else None,
+            "from_output_index": output_index,
+            "from_output_name": str(localize(connection.outputName())),
+            "source_output_type": source_output_type,
+        }
+    return result
+
+
+def _disconnect_input(opencl_node: Any, index: int) -> None:
+    try:
+        opencl_node.setInput(index, None)
+    except TypeError:
+        opencl_node.setInput(index, None, 0)
+
+
+def _safe_cook(node: Any) -> None:
+    cook = getattr(node, "cook", None)
+    if not callable(cook):
+        return
+    try:
+        cook(force=True)
+    except TypeError:
+        cook()
+    except Exception:
+        return
+
+
+def _validation_summary(
+    opencl_node: Any,
+    *,
+    bindings: list[Any],
+    runover: str,
+) -> dict[str, Any]:
+    _safe_cook(opencl_node)
+    desired_inputs = _port_signature_entries(bindings, output=False)
+    desired_outputs = _port_signature_entries(bindings, output=True)
+    current_inputs = _summary_signature_entries(opencl_node, output=False)
+    current_outputs = _summary_signature_entries(opencl_node, output=True)
+    input_types = _input_data_types(opencl_node)
+    connections = _current_input_connections(opencl_node)
+
+    input_rows: list[dict[str, Any]] = []
+    invalid_connection_count = 0
+    missing_required_count = 0
+
+    for index, entry in enumerate(current_inputs):
+        expected_data_type = input_types[index] if index < len(input_types) else None
+        connected = connections.get(index)
+        compatible = None
+        if connected is None:
+            compatible = bool(entry["optional"])
+            if not entry["optional"]:
+                missing_required_count += 1
+        elif expected_data_type is not None and connected["source_output_type"] is not None:
+            compatible = connected["source_output_type"] == expected_data_type
+            if not compatible:
+                invalid_connection_count += 1
+        elif connected is not None:
+            compatible = False
+            invalid_connection_count += 1
+
+        row = {
+            "index": index,
+            "name": str(entry["name"]),
+            "type": str(entry["type"]),
+            "expected_data_type": expected_data_type,
+            "optional": bool(entry["optional"]),
+            "connected": connected is not None,
+            "compatible": compatible,
+        }
+        if connected is not None:
+            row.update(connected)
+        input_rows.append(row)
+
+    desired_input_rows = [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in desired_inputs]
+    desired_output_rows = [{"name": entry["name"], "type": entry["type"]} for entry in desired_outputs]
+    signature_matches_kernel = current_inputs == desired_input_rows and current_outputs == desired_output_rows
+    messages = _node_messages(opencl_node)
+
+    return {
+        "node_path": localize(opencl_node.path()),
+        "runover": runover,
+        "binding_count": len(bindings),
+        "signature_matches_kernel": signature_matches_kernel,
+        "sync_required": not signature_matches_kernel,
+        "invalid_connection_count": invalid_connection_count,
+        "missing_required_count": missing_required_count,
+        "ok": signature_matches_kernel and invalid_connection_count == 0 and missing_required_count == 0 and not messages["errors"],
+        "desired_inputs": desired_input_rows,
+        "desired_outputs": desired_output_rows,
+        "current_inputs": current_inputs,
+        "current_outputs": current_outputs,
+        "inputs": input_rows,
+        **messages,
+    }
+
+
 def _sync_bindings(opencl_node: Any, bindings: list[Any]) -> None:
     # Rebuild binding rows from an empty multiparm table so stale fields from
     # previous row kinds do not survive onto newly generated rows.
@@ -459,12 +609,38 @@ def handle_sync(args: argparse.Namespace) -> dict:
         if runover:
             opencl_node.parm("options_runover").set(runover)
 
+        validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
+        disconnected_inputs: list[int] = []
+        if getattr(args, "disconnect_invalid", False):
+            for row in validation["inputs"]:
+                if row["connected"] and row["compatible"] is False:
+                    _disconnect_input(opencl_node, int(row["index"]))
+                    disconnected_inputs.append(int(row["index"]))
+            if disconnected_inputs:
+                _safe_cook(opencl_node)
+                validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
+
         return success_result(
             {
                 "node_path": localize(opencl_node.path()),
                 "runover": runover,
                 "binding_count": len(bindings),
                 "bindings_only": bool(args.bindings_only),
+                "disconnect_invalid": bool(getattr(args, "disconnect_invalid", False)),
+                "disconnected_inputs": disconnected_inputs,
                 **summary,
+                "validation": validation,
             }
         )
+
+
+def handle_validate(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        opencl_node = get_node(session, args.node_path)
+        if opencl_node.parm("kernelcode") is None:
+            raise ValueError(f"Node is not an OpenCL node: {args.node_path}")
+
+        kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
+        bindings = list(session.hou.text.oclExtractBindings(kernel_code))
+        runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
+        return success_result(_validation_summary(opencl_node, bindings=bindings, runover=runover))

@@ -166,6 +166,7 @@ def test_handle_help_opencl_topic_includes_discovery_context() -> None:
 
     assert result["ok"] is True
     assert "Synchronize OpenCL node bindings" in result["data"]["description"]
+    assert "validate" in result["data"]["subcommands"]
     assert "sync" in result["data"]["subcommands"]
     assert "Refresh an OpenCL node" in result["data"]["subcommand_descriptions"]["sync"]
     assert "After editing an OpenCL kernel" in result["data"]["notes"][0]
@@ -175,8 +176,15 @@ def test_handle_help_opencl_sync_topic_has_examples() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl", "sync"]))
 
     assert result["ok"] is True
-    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only]"
+    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid]"
     assert any("--bindings-only" in example for example in result["data"]["examples"])
+
+
+def test_handle_help_opencl_validate_topic_has_usage() -> None:
+    result = help_command.handle_help(Namespace(command_path=["opencl", "validate"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli opencl validate <node-path>"
 
 
 def test_handle_help_missing_topic_raises() -> None:

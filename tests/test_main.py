@@ -31,6 +31,11 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "opencl"
     assert args.opencl_command == "sync"
     assert args.clear is True
+    assert args.disconnect_invalid is False
+
+    args = parser.parse_args(["opencl", "validate", "/obj/cops/opencl1"])
+    assert args.command == "opencl"
+    assert args.opencl_command == "validate"
 
     args = parser.parse_args(["parm", "full", "/obj/geo1/box1/sizex"])
     assert args.command == "parm"

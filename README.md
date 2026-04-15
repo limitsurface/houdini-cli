@@ -14,7 +14,7 @@ The CLI is built for structured scene interaction from agents and scripts. Curre
 - shelf discovery and shelf tool CRUD: `shelf`
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
-- OpenCL binding/signature sync: `opencl`
+- OpenCL binding/signature validation and sync: `opencl`
 - node type discovery: `nodetype`
 - built-in structured help: `help`
 
@@ -91,8 +91,10 @@ houdini-cli node get /obj/geo1/null1 --section inputs
 After editing an OpenCL kernel:
 
 ```powershell
+houdini-cli opencl validate /obj/geo1/work_here/opencl1
 houdini-cli opencl sync /obj/geo1/work_here/opencl1
 houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only
+houdini-cli opencl sync /obj/geo1/work_here/opencl1 --disconnect-invalid
 ```
 
 Capture a viewport screenshot:

@@ -342,16 +342,25 @@ HELP_TREE = {
         "description": "Synchronize OpenCL node bindings, visible signature rows, and generated spare parameters from kernel code.",
         "notes": [
             "After editing an OpenCL kernel, run: houdini-cli opencl sync <node-path>",
+            "Use opencl validate to check current port types, kernel/signature drift, and stale incompatible wires before or after syncing.",
             "Use --bindings-only when you want to refresh bindings/parms without changing the visible signature.",
         ],
         "children": {
+            "validate": {
+                "description": "Validate an OpenCL node's current visible signature and wired input types against its kernel #bind directives.",
+                "usage": "houdini-cli opencl validate <node-path>",
+                "examples": [
+                    "uv run houdini-cli opencl validate /obj/geo1/work_here/opencl1",
+                ],
+            },
             "sync": {
-                "description": "Refresh an OpenCL node from its kernel #bind directives, including bindings, signature rows, and generated spare parms.",
-                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only]",
+                "description": "Refresh an OpenCL node from its kernel #bind directives, including bindings, signature rows, generated spare parms, and post-sync validation.",
+                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid]",
                 "examples": [
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1",
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only",
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --clear",
+                    "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --disconnect-invalid",
                 ],
             },
         }
@@ -424,6 +433,10 @@ def _topic_payload(command_path: list[str]) -> dict:
                 {
                     "task": "After editing an OpenCL kernel",
                     "command": "houdini-cli opencl sync <node-path>",
+                },
+                {
+                    "task": "Check whether OpenCL wires still match regenerated ports",
+                    "command": "houdini-cli opencl validate <node-path>",
                 },
                 {
                     "task": "Inspect explicit node wiring",
