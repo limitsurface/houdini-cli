@@ -44,6 +44,17 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     frame_parser.add_argument("frame", nargs="?", type=int, help="Optional frame to set before reporting.")
     frame_parser.set_defaults(handler=handle_frame)
 
+    selection_parser = session_subparsers.add_parser(
+        "selection",
+        help="Read the currently selected nodes in the Houdini UI.",
+    )
+    selection_parser.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="Include hidden selected nodes.",
+    )
+    selection_parser.set_defaults(handler=handle_selection)
+
     screenshot_parser = session_subparsers.add_parser(
         "screenshot",
         help="Capture a screenshot from a Scene Viewer pane.",
@@ -170,6 +181,21 @@ def handle_frame(args: argparse.Namespace) -> dict:
         return success_result(
             {
                 "frame": current_frame,
+            }
+        )
+
+
+def handle_selection(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        selected_nodes = list(session.hou.selectedNodes(bool(args.include_hidden)))
+        paths = [localize(node.path()) for node in selected_nodes]
+        current_path = paths[-1] if paths else None
+        return success_result(
+            {
+                "count": len(paths),
+                "paths": paths,
+                "current": current_path,
+                "include_hidden": bool(args.include_hidden),
             }
         )
 

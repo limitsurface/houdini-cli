@@ -9,7 +9,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "node", "nodetype", "opencl", "parm", "ping", "session"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "node", "nodetype", "opencl", "parm", "ping", "session", "shelf"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
@@ -99,6 +99,14 @@ def test_handle_help_session_frame_topic() -> None:
     assert result["data"]["usage"] == "houdini-cli session frame [<frame>]"
 
 
+def test_handle_help_session_selection_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["session", "selection"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli session selection [--include-hidden]"
+    assert "global current node" in result["data"]["notes"][0]
+
+
 def test_handle_help_session_viewport_axis_topic() -> None:
     result = help_command.handle_help(Namespace(command_path=["session", "viewport", "axis"]))
 
@@ -112,6 +120,21 @@ def test_handle_help_session_viewport_group_lists_subcommands() -> None:
     assert result["ok"] is True
     assert result["data"]["subcommands"] == ["axis", "focus-selected", "get", "set"]
     assert "free-camera state" in result["data"]["subcommand_descriptions"]["get"]
+
+
+def test_handle_help_shelf_group_lists_subcommands() -> None:
+    result = help_command.handle_help(Namespace(command_path=["shelf"]))
+
+    assert result["ok"] is True
+    assert result["data"]["subcommands"] == ["find", "list", "tool", "tools"]
+    assert "compact row format" in result["data"]["subcommand_descriptions"]["list"]
+
+
+def test_handle_help_shelf_tool_delete_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["shelf", "tool", "delete"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli shelf tool delete <tool-name> [--shelf <shelf-name>]"
 
 
 def test_handle_help_node_list_topic_mentions_compact_schema() -> None:

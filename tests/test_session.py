@@ -7,8 +7,9 @@ from houdini_cli.commands import session
 
 
 class FakeHou:
-    def __init__(self, frame=1.0) -> None:
+    def __init__(self, frame=1.0, selected_nodes=()) -> None:
         self._frame = frame
+        self._selected_nodes = tuple(selected_nodes)
         self.hipFile = self
         self.paneTabType = SimpleNamespace(SceneViewer="SceneViewer")
         self.geometryViewportType = SimpleNamespace(
@@ -48,6 +49,17 @@ class FakeHou:
         if command == "fcur":
             return (f"Frame {int(self._frame)} ({(self._frame - 1) / 24.0} sec.)", "")
         raise AssertionError(f"Unexpected hscript command: {command}")
+
+    def selectedNodes(self, include_hidden=False):
+        return self._selected_nodes
+
+
+class FakeNode:
+    def __init__(self, path) -> None:
+        self._path = path
+
+    def path(self):
+        return self._path
 
 
 class FakeSession:
@@ -246,6 +258,26 @@ def test_handle_frame_sets_current_frame(monkeypatch) -> None:
 
     assert fake_hou.frame() == 24
     assert result == {"ok": True, "data": {"frame": 24}}
+
+
+def test_handle_selection_reads_selected_nodes(monkeypatch) -> None:
+    fake_hou = FakeHou(selected_nodes=(FakeNode("/obj/geo1/box1"), FakeNode("/obj/geo1/null1")))
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_selection(
+        Namespace(host="localhost", port=18811, include_hidden=False)
+    )
+
+    assert result == {
+        "ok": True,
+        "data": {
+            "count": 2,
+            "paths": ["/obj/geo1/box1", "/obj/geo1/null1"],
+            "current": "/obj/geo1/null1",
+            "include_hidden": False,
+        },
+    }
 
 
 def test_handle_screenshot_uses_single_scene_viewer(monkeypatch) -> None:

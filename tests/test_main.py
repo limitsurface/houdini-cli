@@ -56,6 +56,17 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.parm_command == "full-set"
     assert args.input == "payload.json"
 
+    args = parser.parse_args(["shelf", "find", "--query", "pipe"])
+    assert args.command == "shelf"
+    assert args.shelf_command == "find"
+    assert args.query == "pipe"
+
+    args = parser.parse_args(["shelf", "tool", "delete", "print_selected_node_name_test", "--shelf", "scy_Pipe"])
+    assert args.command == "shelf"
+    assert args.shelf_command == "tool"
+    assert args.shelf_tool_command == "delete"
+    assert args.shelf_name == "scy_Pipe"
+
     args = parser.parse_args(["node", "parms", "find", "/obj/geo1", "--name", "dist"])
     assert args.command == "node"
     assert args.node_command == "parms"
@@ -71,6 +82,11 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "session"
     assert args.session_command == "frame"
     assert args.frame == 24
+
+    args = parser.parse_args(["session", "selection", "--include-hidden"])
+    assert args.command == "session"
+    assert args.session_command == "selection"
+    assert args.include_hidden is True
 
     args = parser.parse_args(["session", "viewport", "axis", "+x"])
     assert args.command == "session"

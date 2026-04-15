@@ -16,6 +16,7 @@ from .commands import node
 from .commands import nodetype
 from .commands import opencl
 from .commands import parm
+from .commands import shelf
 from .commands import session
 from .format.envelopes import error_result
 from .runtime.logging import configure_logging
@@ -40,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     help_command.register_parser(subparsers)
     eval_command.register_parser(subparsers)
     parm.register_parser(subparsers)
+    shelf.register_parser(subparsers)
     node.register_parser(subparsers)
     cop.register_parser(subparsers)
     opencl.register_parser(subparsers)
