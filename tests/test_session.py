@@ -1,3 +1,4 @@
+import os
 from argparse import Namespace
 from types import SimpleNamespace
 
@@ -285,7 +286,8 @@ def test_handle_screenshot_uses_single_scene_viewer(monkeypatch) -> None:
     pane = FakePane("panetab1", fake_hou.paneTabType.SceneViewer, current=True)
     fake_hou.ui = FakeUI([pane])
     fake_session = FakeSession(fake_hou)
-    fake_session.connection.modules.os.files[r"C:/houdini_cli\screenshots\viewport_panetab1_20260331_140000.png"] = 123
+    expected_path = os.path.join("C:/houdini_cli", "screenshots", "viewport_panetab1_20260331_140000.png")
+    fake_session.connection.modules.os.files[expected_path] = 123
 
     monkeypatch.setattr(session, "connect", FakeConnect(fake_session))
     monkeypatch.setattr(session, "localize", lambda value: value)
@@ -306,7 +308,7 @@ def test_handle_screenshot_uses_single_scene_viewer(monkeypatch) -> None:
 
     assert result["ok"] is True
     assert result["data"]["pane_name"] == "panetab1"
-    assert result["data"]["path"] == r"C:/houdini_cli\screenshots\viewport_panetab1_20260331_140000.png"
+    assert result["data"]["path"] == expected_path
     assert fake_session.connection.modules.husd.assetutils.calls[0]["sceneviewer"] is pane
 
 
