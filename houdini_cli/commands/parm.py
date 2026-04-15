@@ -26,19 +26,25 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     menu_parser.add_argument("parm_path", help="Full Houdini parameter path.")
     menu_parser.set_defaults(handler=handle_menu)
 
-    set_parser = parm_subparsers.add_parser("set", help="Set parameter value or full parameter data.")
+    set_parser = parm_subparsers.add_parser("set", help="Set a scalar or single string parameter value.")
     set_parser.add_argument("parm_path", help="Full Houdini parameter path.")
-    set_parser.add_argument(
-        "--json",
-        required=True,
-        help="JSON payload or '-' to read from stdin.",
-    )
-    set_parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Apply full parameter data via Parm.setFromData().",
-    )
+    set_parser.add_argument("value", help="Parameter value.")
     set_parser.set_defaults(handler=handle_set)
+
+    tuple_set_parser = parm_subparsers.add_parser("tuple-set", help="Set tuple parameter values.")
+    tuple_set_parser.add_argument("parm_path", help="Tuple parameter path.")
+    tuple_set_parser.add_argument("values", nargs="+", help="Tuple component values in order.")
+    tuple_set_parser.set_defaults(handler=handle_tuple_set)
+
+    text_set_parser = parm_subparsers.add_parser("text-set", help="Set a text parameter from stdin or a file.")
+    text_set_parser.add_argument("parm_path", help="Parameter path.")
+    text_set_parser.add_argument("--input", required=True, help="File path or '-' to read from stdin.")
+    text_set_parser.set_defaults(handler=handle_text_set)
+
+    full_set_parser = parm_subparsers.add_parser("full-set", help="Apply full structured parameter data.")
+    full_set_parser.add_argument("parm_path", help="Parameter path.")
+    full_set_parser.add_argument("--input", required=True, help="File path or '-' to read JSON from stdin.")
+    full_set_parser.set_defaults(handler=handle_full_set)
 
 
 def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -67,10 +73,43 @@ def _get_parm(session: Any, parm_path: str) -> Any:
     return parm
 
 
+def _get_parm_tuple(session: Any, parm_path: str) -> Any:
+    parm_tuple = session.hou.parmTuple(parm_path)
+    if parm_tuple is not None:
+        return parm_tuple
+    parm = _get_parm(session, parm_path)
+    parm_tuple = parm.tuple()
+    if len(parm_tuple) <= 1:
+        raise ValueError(f"Parameter is not a tuple: {parm_path}")
+    return parm_tuple
+
+
+def _tuple_members(parm: Any) -> list[Any]:
+    return list(parm.tuple())
+
+
+def _tuple_name(parm: Any) -> str:
+    return localize(parm.tuple().name())
+
+
+def _is_tuple_component(parm: Any) -> bool:
+    members = _tuple_members(parm)
+    return len(members) > 1 and localize(parm.name()) != _tuple_name(parm)
+
+
+def _component_value(parm: Any) -> Any:
+    data = localize(parm.valueAsData())
+    members = _tuple_members(parm)
+    if not (_is_tuple_component(parm) and isinstance(data, list) and len(data) == len(members)):
+        return data
+    names = [localize(item.name()) for item in members]
+    return data[names.index(localize(parm.name()))]
+
+
 def handle_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         parm = _get_parm(session, args.parm_path)
-        return success_result({"parm_path": args.parm_path, "value": localize(parm.valueAsData())})
+        return success_result({"parm_path": args.parm_path, "value": _component_value(parm)})
 
 
 def handle_full(args: argparse.Namespace) -> dict:
@@ -99,16 +138,69 @@ def handle_menu(args: argparse.Namespace) -> dict:
 
 
 def handle_set(args: argparse.Namespace) -> dict:
-    payload = load_json_input(args.json)
     with connect(args.host, args.port) as session:
         parm = _get_parm(session, args.parm_path)
-        if args.full:
-            parm.setFromData(payload)
-        else:
-            if isinstance(payload, (int, float, str, bool)):
-                parm.set(payload)
-            else:
-                parm.setValueFromData(payload)
+        parm.set(_parse_cli_value(args.value))
+        return success_result({"parm_path": args.parm_path, "applied": True})
+
+
+def _parse_cli_value(raw: str) -> Any:
+    lowered = raw.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        return raw
+
+
+def handle_tuple_set(args: argparse.Namespace) -> dict:
+    values = [_parse_cli_value(value) for value in args.values]
+    with connect(args.host, args.port) as session:
+        parm_tuple = _get_parm_tuple(session, args.parm_path)
+        if len(values) != len(parm_tuple):
+            raise ValueError(f"Tuple arity mismatch: expected {len(parm_tuple)} values, got {len(values)}")
+        parm_tuple.set(values)
+        return success_result({"parm_path": args.parm_path, "applied": True})
+
+
+def _read_text_input(input_value: str) -> str:
+    if input_value == "-":
+        import sys
+
+        return sys.stdin.read()
+    with open(input_value, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _read_json_input(input_value: str) -> Any:
+    import json
+
+    if input_value == "-":
+        return load_json_input("-")
+    with open(input_value, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def handle_text_set(args: argparse.Namespace) -> dict:
+    text = _read_text_input(args.input)
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        parm.set(text)
+        return success_result({"parm_path": args.parm_path, "applied": True})
+
+
+def handle_full_set(args: argparse.Namespace) -> dict:
+    payload = _read_json_input(args.input)
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        parm.setFromData(payload)
         return success_result({"parm_path": args.parm_path, "applied": True})
 
 
@@ -126,29 +218,69 @@ def _parm_template_type(parm: Any) -> str:
     return localize(parm.parmTemplate().type().name())
 
 
+def _tuple_type_label(parm: Any) -> str:
+    members = _tuple_members(parm)
+    base = _parm_template_type(parm)
+    return f"{base}{len(members)}" if len(members) > 1 else base
+
+
 def _parm_flags(parm: Any) -> str:
-    return "".join(["n" if not bool(localize(parm.isAtDefault())) else ""])
+    members = _tuple_members(parm)
+    return "".join(["n" if any(not bool(localize(item.isAtDefault())) for item in members) else ""])
+
+
+def _parm_display_name(parm: Any) -> str:
+    members = _tuple_members(parm)
+    return _tuple_name(parm) if len(members) > 1 else localize(parm.name())
+
+
+def _parm_row_value(parm: Any) -> Any:
+    members = _tuple_members(parm)
+    data = localize(parm.valueAsData())
+    return data if len(members) > 1 else data
 
 
 def _parm_row(parm: Any) -> list[Any]:
     return [
-        localize(parm.name()),
-        _parm_template_type(parm),
-        localize(parm.valueAsData()),
+        _parm_display_name(parm),
+        _tuple_type_label(parm),
+        _parm_row_value(parm),
         _parm_flags(parm),
     ]
 
 
 def _iter_discoverable_parms(node: Any) -> list[Any]:
-    return [parm for parm in node.parms() if _parm_template_type(parm) not in SKIPPED_TEMPLATE_TYPES]
+    rows: list[Any] = []
+    seen: set[str] = set()
+    for parm in node.parms():
+        if _parm_template_type(parm) in SKIPPED_TEMPLATE_TYPES:
+            continue
+        key = localize(parm.path())
+        members = _tuple_members(parm)
+        if len(members) > 1:
+            key = localize(members[0].path())
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(parm)
+    return rows
 
 
 def _matches_parm(parm: Any, *, name: str | None, parm_type: str | None, non_default: bool) -> bool:
     if non_default and bool(localize(parm.isAtDefault())):
-        return False
-    if name and name.lower() not in localize(parm.name()).lower():
-        return False
-    if parm_type and _parm_template_type(parm) != parm_type:
+        members = _tuple_members(parm)
+        if all(bool(localize(item.isAtDefault())) for item in members):
+            return False
+    if name:
+        needle = name.lower()
+        names = [_parm_display_name(parm), *[localize(item.name()) for item in _tuple_members(parm)]]
+        lowered = [item.lower() for item in names]
+        exact = any(item == needle for item in lowered)
+        prefix = any(item.startswith(needle) for item in lowered)
+        partial = len(needle) >= 3 and any(needle in item for item in lowered)
+        if not (exact or prefix or partial):
+            return False
+    if parm_type and _tuple_type_label(parm) != parm_type:
         return False
     return True
 

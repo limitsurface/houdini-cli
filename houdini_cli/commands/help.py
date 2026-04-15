@@ -16,7 +16,7 @@ HELP_RULES = [
 HELP_NOTES = [
     "rpyc 5.x is required with the current Houdini/hrpyc pairing",
     "complex JSON should usually go through stdin with --json -",
-    "component parm reads may return tuple-shaped data",
+    "component parm reads return component values; node parm discovery collapses tuples by default",
     "node get --section parms may return null",
     "attrib get is summary-first by default and caps sampled values unless --element is used",
     "aggregate attribute stats are intentionally out of scope for now; use SOP/VEX-side analysis when needed",
@@ -44,14 +44,18 @@ HELP_LEGENDS = {
             "paths are relative to the requested root when possible",
         ],
     },
-    "node_inspect": {
-        "keys": {
+    "node_neighbors": {
+        "nodes_cols": {
+            "id": "response-local node id",
             "p": "path",
             "t": "type",
             "f": "flags",
-            "i": "input node refs",
-            "o": "output node refs",
-            "parms": "non-default parameter names",
+        },
+        "edges_cols": {
+            "src": "source node id",
+            "out": "source output index",
+            "dst": "destination node id",
+            "in": "destination input index",
         },
         "flags": {
             "d": "display",
@@ -59,7 +63,7 @@ HELP_LEGENDS = {
             "b": "bypass",
         },
         "notes": [
-            "inspect uses sibling-relative node refs when possible",
+            "neighbor node ids are response-local and only stable within one response",
         ],
     },
     "node_parm_rows": {
@@ -74,6 +78,7 @@ HELP_LEGENDS = {
         },
         "notes": [
             "node parms list and node parms find skip UI-only folder/button parm templates",
+            "tuple parms are collapsed to one row using the tuple name when possible",
         ],
     },
 }
@@ -141,14 +146,31 @@ HELP_TREE = {
                 "examples": ["uv run houdini-cli parm menu /obj/cli_attrib_live/box1/type"],
             },
             "set": {
-                "description": "Apply scalar or structured parameter values.",
-                "usage": "houdini-cli parm set <parm-path> --json <payload-or-'-'> [--full]",
+                "description": "Apply one scalar or string parameter value from a CLI argument.",
+                "usage": "houdini-cli parm set <parm-path> <value>",
                 "examples": [
-                    'uv run houdini-cli parm set /obj/cli_attrib_live/box1/sizex --json "2.5"',
-                    '\'{"value":[1,2,3]}\' | uv run houdini-cli parm set /obj/cli_attrib_live/box1/t --full --json -',
+                    "uv run houdini-cli parm set /obj/cli_attrib_live/box1/sizex 2.5",
+                    "uv run houdini-cli parm set /obj/cli_attrib_live/copytopoints1/applymethod2 mult",
                 ],
-                "notes": [
-                    "For multiple parameter edits on the same node, prefer: houdini-cli node set <node-path> --section parms --json ...",
+            },
+            "tuple-set": {
+                "description": "Set all values on a tuple parameter in tuple order.",
+                "usage": "houdini-cli parm tuple-set <parm-path> <value> <value> ...",
+                "examples": ["uv run houdini-cli parm tuple-set /obj/cli_attrib_live/xform1/t 1 2 3"],
+            },
+            "text-set": {
+                "description": "Set a text parameter from stdin or a text file.",
+                "usage": "houdini-cli parm text-set <parm-path> --input <path-or-'-'>",
+                "examples": [
+                    "uv run houdini-cli parm text-set /obj/cli_attrib_live/wrangle1/snippet --input snippet.vfl",
+                    "Get-Content snippet.vfl | uv run houdini-cli parm text-set /obj/cli_attrib_live/wrangle1/snippet --input -",
+                ],
+            },
+            "full-set": {
+                "description": "Apply a full structured parameter payload from stdin or a JSON file.",
+                "usage": "houdini-cli parm full-set <parm-path> --input <path-or-'-'>",
+                "examples": [
+                    "uv run houdini-cli parm full-set /obj/cli_attrib_live/copytopoints1/targetattribs --input payload.json",
                 ],
             },
         }
@@ -222,11 +244,11 @@ HELP_TREE = {
                     },
                 },
             },
-            "inspect": {
-                "description": "Inspect one node in a compact object format with local connection refs and non-default parm names.",
-                "usage": "houdini-cli node inspect <node-path>",
+            "neighbors": {
+                "description": "Inspect local graph neighbors for one node with compact node and edge tables.",
+                "usage": "houdini-cli node neighbors <node-path> [--depth N] [--max-nodes N]",
                 "notes": [
-                    "See `help` root legends.node_inspect for compact field meanings.",
+                    "See `help` root legends.node_neighbors for compact field meanings.",
                 ],
             },
             "nav": {

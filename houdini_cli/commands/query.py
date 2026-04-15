@@ -31,9 +31,11 @@ def register_parser(node_subparsers: argparse._SubParsersAction[argparse.Argumen
     find_parser.add_argument("--max-nodes", type=int, default=DEFAULT_MAX_NODES)
     find_parser.set_defaults(handler=handle_find)
 
-    inspect_parser = node_subparsers.add_parser("inspect", help="Inspect one node with a focused summary.")
-    inspect_parser.add_argument("node_path", help="Node path to inspect.")
-    inspect_parser.set_defaults(handler=handle_inspect)
+    neighbors_parser = node_subparsers.add_parser("neighbors", help="Inspect local graph neighbors for one node.")
+    neighbors_parser.add_argument("node_path", help="Node path to inspect.")
+    neighbors_parser.add_argument("--depth", type=int, default=1, help="Neighbor traversal depth.")
+    neighbors_parser.add_argument("--max-nodes", type=int, default=DEFAULT_MAX_NODES)
+    neighbors_parser.set_defaults(handler=handle_neighbors)
 
 
 def _traverse(root: Any, max_depth: int, max_nodes: int) -> tuple[list[Any], bool]:
@@ -75,13 +77,6 @@ def _relative_path(root_path: str, node_path: str) -> str:
     return node_path
 
 
-def _parent_path(node_path: str) -> str:
-    if node_path == "/":
-        return "/"
-    parent = node_path.rsplit("/", 1)[0]
-    return parent or "/"
-
-
 def _flags(summary: dict[str, Any]) -> str:
     return "".join(
         [
@@ -102,14 +97,6 @@ def _compact_row(root_path: str, node: Any) -> list[Any]:
         summary["output_count"],
         _flags(summary),
     ]
-
-
-def _inspect_ref(node_path: str, other_path: str) -> str:
-    node_parent = _parent_path(node_path)
-    other_parent = _parent_path(other_path)
-    if node_parent == other_parent:
-        return other_path.rsplit("/", 1)[-1]
-    return other_path
 
 
 def handle_list(args: argparse.Namespace) -> dict:
@@ -167,30 +154,75 @@ def handle_find(args: argparse.Namespace) -> dict:
             )
 
 
-def handle_inspect(args: argparse.Namespace) -> dict:
+def handle_neighbors(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         with sync_request_timeout(session, TRAVERSAL_TIMEOUT_SECONDS):
-            node = get_node(session, args.node_path)
-            summary = node_summary(node)
-            interesting_parms = [
-                localize(parm.name())
-                for parm in node.parms()
-                if not bool(localize(parm.isAtDefault()))
-            ]
+            root = get_node(session, args.node_path)
+            queue = deque([(root, 0)])
+            seen: set[str] = set()
+            nodes: list[Any] = []
+            truncated = False
+
+            while queue:
+                node, depth = queue.popleft()
+                path = localize(node.path())
+                if path in seen or depth > args.depth:
+                    continue
+                seen.add(path)
+                nodes.append(node)
+                if len(nodes) >= args.max_nodes:
+                    truncated = True
+                    break
+                for other in node.inputs():
+                    if other is not None:
+                        queue.append((other, depth + 1))
+                for other in node.outputs():
+                    if other is not None:
+                        queue.append((other, depth + 1))
+
+            index_by_path = {localize(node.path()): idx for idx, node in enumerate(nodes)}
+            node_rows = []
+            edge_rows = []
+            root_parent = args.node_path.rsplit("/", 1)[0] or "/"
+            for idx, node in enumerate(nodes):
+                summary = node_summary(node)
+                node_rows.append(
+                    [
+                        idx,
+                        _relative_path(root_parent, summary["path"]),
+                        summary["type"],
+                        _flags(summary),
+                    ]
+                )
+                for connection in node.inputConnections():
+                    source = connection.inputNode()
+                    dest = connection.outputNode()
+                    if source is None or dest is None:
+                        continue
+                    source_path = localize(source.path())
+                    dest_path = localize(dest.path())
+                    if source_path not in index_by_path or dest_path not in index_by_path:
+                        continue
+                    edge_rows.append(
+                        [
+                            index_by_path[source_path],
+                            int(localize(connection.outputIndex())),
+                            index_by_path[dest_path],
+                            int(localize(connection.inputIndex())),
+                        ]
+                    )
             return success_result(
                 {
-                    "p": summary["path"].rsplit("/", 1)[-1],
-                    "t": summary["type"],
-                    "f": _flags(summary),
-                    "i": [
-                        _inspect_ref(summary["path"], localize(other.path()))
-                        for other in node.inputs()
-                        if other is not None
-                    ],
-                    "o": [
-                        _inspect_ref(summary["path"], localize(other.path()))
-                        for other in node.outputs()
-                    ],
-                    "parms": interesting_parms,
-                }
+                    "root": args.node_path,
+                    "depth": args.depth,
+                    "nodes": {
+                        "cols": ["id", "p", "t", "f"],
+                        "rows": node_rows,
+                    },
+                    "edges": {
+                        "cols": ["src", "out", "dst", "in"],
+                        "rows": edge_rows,
+                    },
+                },
+                meta={"truncated": truncated, "max_nodes": args.max_nodes},
             )

@@ -14,12 +14,15 @@ class FakeParm:
         value=None,
         template_type: str = "Float",
         at_default: bool = False,
+        tuple_name: str | None = None,
     ) -> None:
         self._name = name
         self._path = path
         self._value = {"value": 3} if value is None else value
         self._template_type = template_type
         self._at_default = at_default
+        self._tuple_name = tuple_name or name
+        self._tuple_members = [self]
         self.last_value_payload = None
         self.last_full_payload = None
         self.last_scalar_payload = None
@@ -56,6 +59,35 @@ class FakeParm:
     def isAtDefault(self):
         return self._at_default
 
+    def tuple(self):
+        members = self._tuple_members
+        tuple_name = self._tuple_name
+
+        class _Tuple:
+            def __init__(self, items, name: str) -> None:
+                self._items = items
+                self._name = name
+                self.last_set_payload = None
+
+            def __iter__(self):
+                return iter(self._items)
+
+            def __len__(self):
+                return len(self._items)
+
+            def __getitem__(self, index):
+                return self._items[index]
+
+            def name(self):
+                return self._name
+
+            def set(self, payload):
+                self.last_set_payload = payload
+                for item, value in zip(self._items, payload, strict=True):
+                    item.last_scalar_payload = value
+
+        return _Tuple(members, tuple_name)
+
     def setValueFromData(self, payload):
         self.last_value_payload = payload
 
@@ -74,6 +106,14 @@ class FakeSession:
 
     def parm(self, path):
         return self._parm
+
+    def parmTuple(self, path):
+        if self._parm is None:
+            return None
+        parm_tuple = self._parm.tuple()
+        if parm_tuple.name() == path.rsplit("/", 1)[-1]:
+            return parm_tuple
+        return None
 
     def node(self, path):
         return self._node
@@ -102,6 +142,12 @@ class FakeNode:
         return self._parms
 
 
+def _bind_tuple(tuple_name: str, *parms: FakeParm) -> None:
+    for parm in parms:
+        parm._tuple_name = tuple_name
+        parm._tuple_members = list(parms)
+
+
 def test_handle_get_default(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
@@ -110,6 +156,19 @@ def test_handle_get_default(monkeypatch) -> None:
     result = parm.handle_get(Namespace(host="localhost", port=18811, parm_path="/obj/x"))
     assert result["ok"] is True
     assert result["data"]["value"] == {"value": 3}
+
+
+def test_handle_get_tuple_component_returns_scalar_value(monkeypatch) -> None:
+    tx = FakeParm(name="tx", path="/obj/x/tx", value=[1.5, 0.0, 0.0], template_type="Float")
+    ty = FakeParm(name="ty", path="/obj/x/ty", value=[1.5, 0.0, 0.0], template_type="Float")
+    tz = FakeParm(name="tz", path="/obj/x/tz", value=[1.5, 0.0, 0.0], template_type="Float")
+    _bind_tuple("t", tx, ty, tz)
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(tx)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_get(Namespace(host="localhost", port=18811, parm_path="/obj/x/tx"))
+    assert result["ok"] is True
+    assert result["data"]["value"] == 1.5
 
 
 def test_handle_full(monkeypatch) -> None:
@@ -142,49 +201,81 @@ def test_handle_menu(monkeypatch) -> None:
 def test_handle_set_default(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "load_json_input", lambda raw: {"a": 1})
 
     result = parm.handle_set(
-        Namespace(host="localhost", port=18811, parm_path="/obj/x", full=False, json='{"a":1}')
+        Namespace(host="localhost", port=18811, parm_path="/obj/x", value="hello")
     )
     assert result["ok"] is True
-    assert fake_parm.last_value_payload == {"a": 1}
-    assert fake_parm.last_full_payload is None
-    assert fake_parm.last_scalar_payload is None
+    assert fake_parm.last_scalar_payload == "hello"
 
 
 def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "load_json_input", lambda raw: 4.5)
 
     result = parm.handle_set(
-        Namespace(host="localhost", port=18811, parm_path="/obj/x", full=False, json="4.5")
+        Namespace(host="localhost", port=18811, parm_path="/obj/x", value="4.5")
     )
     assert result["ok"] is True
     assert fake_parm.last_scalar_payload == 4.5
     assert fake_parm.last_value_payload is None
 
 
-def test_handle_set_full(monkeypatch) -> None:
+def test_handle_text_set(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "load_json_input", lambda raw: {"b": 2})
+    monkeypatch.setattr(parm, "_read_text_input", lambda _value: "hello\nworld\n")
 
-    result = parm.handle_set(
-        Namespace(host="localhost", port=18811, parm_path="/obj/x", full=True, json='{"b":2}')
+    result = parm.handle_text_set(
+        Namespace(host="localhost", port=18811, parm_path="/obj/x", input="snippet.txt")
+    )
+    assert result["ok"] is True
+    assert fake_parm.last_scalar_payload == "hello\nworld\n"
+
+
+def test_handle_full_set(monkeypatch) -> None:
+    fake_parm = FakeParm()
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm, "_read_json_input", lambda _value: {"b": 2})
+
+    result = parm.handle_full_set(
+        Namespace(host="localhost", port=18811, parm_path="/obj/x", input="payload.json")
     )
     assert result["ok"] is True
     assert fake_parm.last_full_payload == {"b": 2}
     assert fake_parm.last_value_payload is None
 
 
+def test_handle_tuple_set(monkeypatch) -> None:
+    tx = FakeParm(name="tx", path="/obj/x/tx", value=[0.0, 0.0, 0.0], template_type="Float")
+    ty = FakeParm(name="ty", path="/obj/x/ty", value=[0.0, 0.0, 0.0], template_type="Float")
+    tz = FakeParm(name="tz", path="/obj/x/tz", value=[0.0, 0.0, 0.0], template_type="Float")
+    _bind_tuple("t", tx, ty, tz)
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(tx)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_tuple_set(
+        Namespace(host="localhost", port=18811, parm_path="/obj/x/t", values=["1.5", "0", "-2"])
+    )
+    assert result["ok"] is True
+    assert tx.last_scalar_payload == 1.5
+    assert ty.last_scalar_payload == 0
+    assert tz.last_scalar_payload == -2
+
+
 def test_handle_node_parms_list(monkeypatch) -> None:
+    tx = FakeParm(name="tx", path="/obj/x/tx", value=[1.5, 0.0, 0.0], template_type="Float", at_default=False)
+    ty = FakeParm(name="ty", path="/obj/x/ty", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    tz = FakeParm(name="tz", path="/obj/x/tz", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    _bind_tuple("t", tx, ty, tz)
     fake_node = FakeNode(
         [
             FakeParm(name="dist", path="/obj/x/dist", value=0.25, template_type="Float", at_default=False),
             FakeParm(name="mode", path="/obj/x/mode", value="mult", template_type="Menu", at_default=True),
             FakeParm(name="folder1", path="/obj/x/folder1", value=1, template_type="Folder", at_default=False),
+            tx,
+            ty,
+            tz,
         ]
     )
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
@@ -198,15 +289,23 @@ def test_handle_node_parms_list(monkeypatch) -> None:
     assert result["data"]["rows"] == [
         ["dist", "Float", 0.25, "n"],
         ["mode", "Menu", "mult", ""],
+        ["t", "Float3", [1.5, 0.0, 0.0], "n"],
     ]
 
 
 def test_handle_node_parms_find(monkeypatch) -> None:
+    tx = FakeParm(name="tx", path="/obj/x/tx", value=[1.5, 0.0, 0.0], template_type="Float", at_default=False)
+    ty = FakeParm(name="ty", path="/obj/x/ty", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    tz = FakeParm(name="tz", path="/obj/x/tz", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    _bind_tuple("t", tx, ty, tz)
     fake_node = FakeNode(
         [
             FakeParm(name="dist", path="/obj/x/dist", value=0.25, template_type="Float", at_default=False),
             FakeParm(name="divs", path="/obj/x/divs", value=3, template_type="Int", at_default=False),
             FakeParm(name="mode", path="/obj/x/mode", value="mult", template_type="Menu", at_default=True),
+            tx,
+            ty,
+            tz,
         ]
     )
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
@@ -226,6 +325,31 @@ def test_handle_node_parms_find(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["data"]["query"] == {"name": "di", "non_default": True}
     assert result["data"]["rows"] == [["dist", "Float", 0.25, "n"], ["divs", "Int", 3, "n"]]
+
+
+def test_handle_node_parms_find_matches_tuple_component_names(monkeypatch) -> None:
+    tx = FakeParm(name="tx", path="/obj/x/tx", value=[1.5, 0.0, 0.0], template_type="Float", at_default=False)
+    ty = FakeParm(name="ty", path="/obj/x/ty", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    tz = FakeParm(name="tz", path="/obj/x/tz", value=[1.5, 0.0, 0.0], template_type="Float", at_default=True)
+    _bind_tuple("t", tx, ty, tz)
+    invert = FakeParm(name="invertxform", path="/obj/x/invertxform", value=False, template_type="Toggle", at_default=True)
+    fake_node = FakeNode([tx, ty, tz, invert])
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_node_parms_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            name="tx",
+            parm_type=None,
+            non_default=False,
+            max_parms=10,
+        )
+    )
+    assert result["ok"] is True
+    assert result["data"]["rows"] == [["t", "Float3", [1.5, 0.0, 0.0], "n"]]
 
 
 def test_missing_parm_raises() -> None:

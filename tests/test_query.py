@@ -63,6 +63,14 @@ class FakeNode:
     def outputs(self):
         return self._outputs
 
+    def inputConnections(self):
+        connections = []
+        for index, source in enumerate(self._inputs):
+            if source is None:
+                continue
+            connections.append(FakeConnection(source, self, 0, index))
+        return connections
+
     def parms(self):
         return self._parms
 
@@ -89,6 +97,26 @@ class FakeSession:
                 return current
             queue.extend(current.children())
         return None
+
+
+class FakeConnection:
+    def __init__(self, source: FakeNode, dest: FakeNode, output_index: int, input_index: int) -> None:
+        self._source = source
+        self._dest = dest
+        self._output_index = output_index
+        self._input_index = input_index
+
+    def inputNode(self):
+        return self._source
+
+    def outputNode(self):
+        return self._dest
+
+    def outputIndex(self):
+        return self._output_index
+
+    def inputIndex(self):
+        return self._input_index
 
 
 class FakeConnect:
@@ -195,20 +223,20 @@ def test_handle_find_by_name(monkeypatch) -> None:
     assert result["data"]["rows"][0][0] == "null1"
 
 
-def test_handle_inspect(monkeypatch) -> None:
+def test_handle_neighbors(monkeypatch) -> None:
     root, _, b = _make_tree()
     monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
     monkeypatch.setattr(query, "localize", lambda value: value)
 
-    result = query.handle_inspect(
-        Namespace(host="localhost", port=18811, node_path="/obj/null1")
+    result = query.handle_neighbors(
+        Namespace(host="localhost", port=18811, node_path="/obj/null1", depth=1, max_nodes=50)
     )
     assert result["ok"] is True
-    assert result["data"] == {
-        "p": "null1",
-        "t": "null",
-        "f": "",
-        "i": ["box1"],
-        "o": [],
-        "parms": ["display"],
-    }
+    assert result["data"]["root"] == "/obj/null1"
+    assert result["data"]["nodes"]["cols"] == ["id", "p", "t", "f"]
+    assert result["data"]["nodes"]["rows"] == [
+        [0, "null1", "null", ""],
+        [1, "box1", "box", ""],
+    ]
+    assert result["data"]["edges"]["cols"] == ["src", "out", "dst", "in"]
+    assert result["data"]["edges"]["rows"] == [[1, 0, 0, 0]]

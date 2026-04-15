@@ -36,11 +36,36 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "parm"
     assert args.parm_command == "full"
 
+    args = parser.parse_args(["parm", "set", "/obj/geo1/box1/sizex", "2.5"])
+    assert args.command == "parm"
+    assert args.parm_command == "set"
+    assert args.value == "2.5"
+
+    args = parser.parse_args(["parm", "tuple-set", "/obj/geo1/xform1/t", "1", "2", "3"])
+    assert args.command == "parm"
+    assert args.parm_command == "tuple-set"
+    assert args.values == ["1", "2", "3"]
+
+    args = parser.parse_args(["parm", "text-set", "/obj/geo1/wrangle1/snippet", "--input", "-"])
+    assert args.command == "parm"
+    assert args.parm_command == "text-set"
+    assert args.input == "-"
+
+    args = parser.parse_args(["parm", "full-set", "/obj/geo1/copytopoints1/targetattribs", "--input", "payload.json"])
+    assert args.command == "parm"
+    assert args.parm_command == "full-set"
+    assert args.input == "payload.json"
+
     args = parser.parse_args(["node", "parms", "find", "/obj/geo1", "--name", "dist"])
     assert args.command == "node"
     assert args.node_command == "parms"
     assert args.node_parms_command == "find"
     assert args.name == "dist"
+
+    args = parser.parse_args(["node", "neighbors", "/obj/geo1/null1", "--depth", "2"])
+    assert args.command == "node"
+    assert args.node_command == "neighbors"
+    assert args.depth == 2
 
     args = parser.parse_args(["session", "frame", "24"])
     assert args.command == "session"
