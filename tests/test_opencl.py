@@ -7,12 +7,24 @@ class FakeParm:
     def __init__(self, value):
         self.value = value
         self.last_set = None
+        self.last_expression = None
 
     def evalAsString(self):
         return self.value
 
     def set(self, value):
         self.last_set = value
+
+    def setExpression(self, expression):
+        self.last_expression = expression
+
+    def expression(self):
+        if self.last_expression is None:
+            raise RuntimeError("No expression")
+        return self.last_expression
+
+    def eval(self):
+        return self.value
 
 
 class FakeOpenclNode:
@@ -27,12 +39,21 @@ class FakeOpenclNode:
         self._errors = []
         self._warnings = []
         self._messages = []
+        self._parms = {
+            "kernelcode": self.kernel_parm,
+            "options_runover": self.runover_parm,
+            "inputs": FakeParm(0),
+            "outputs": FakeParm(0),
+            "bindings": FakeParm(0),
+        }
 
     def path(self):
         return "/obj/cops/opencl1"
 
     def setParms(self, payload):
         self.set_parms_calls.append(payload)
+        for key, value in payload.items():
+            self._parms.setdefault(key, FakeParm(value)).value = value
         if "inputs" in payload:
             count = int(payload["inputs"])
             self._input_data_types = ["Mono"] * count
@@ -61,17 +82,7 @@ class FakeOpenclNode:
                 self.signature_data["outputs"][index]["output#_type"] = value
 
     def parm(self, name):
-        if name == "kernelcode":
-            return self.kernel_parm
-        if name == "options_runover":
-            return self.runover_parm
-        if name == "inputs":
-            return FakeParm(0)
-        if name == "outputs":
-            return FakeParm(0)
-        if name == "bindings":
-            return FakeParm(0)
-        return None
+        return self._parms.get(name)
 
     def parmTemplateGroup(self):
         return self._group.copy()
@@ -323,9 +334,10 @@ def test_handle_sync_rebuilds_signature_and_bindings(monkeypatch) -> None:
 
     assert result["ok"] is True
     assert node_obj.set_parms_calls[0] == {"bindings": 0}
-    assert node_obj.set_parms_calls[1] == {"bindings": 3}
-    assert node_obj.set_parms_calls[2]["bindings3_name"] == "gain"
-    assert node_obj.set_parms_calls[2]["bindings3_fval"] == 2.0
+    assert node_obj.set_parms_calls[1] == {"bindings": 1}
+    assert node_obj.set_parms_calls[2]["bindings1_name"] == "gain"
+    assert node_obj.set_parms_calls[2]["bindings1_fval"] == 2.0
+    assert node_obj.parm("bindings1_fval").last_expression == 'ch("./gain")'
     assert node_obj.set_parms_calls[3] == {"inputs": 0, "outputs": 0}
     assert node_obj.set_parms_calls[4] == {"inputs": 1, "outputs": 1}
     payload = node_obj.set_parms_calls[5]
@@ -362,8 +374,9 @@ def test_handle_sync_bindings_only_leaves_signature_untouched(monkeypatch) -> No
 
     assert result["ok"] is True
     assert node_obj.set_parms_calls[0] == {"bindings": 0}
-    assert node_obj.set_parms_calls[1] == {"bindings": 3}
-    assert node_obj.set_parms_calls[2]["bindings3_name"] == "gain"
+    assert node_obj.set_parms_calls[1] == {"bindings": 1}
+    assert node_obj.set_parms_calls[2]["bindings1_name"] == "gain"
+    assert node_obj.parm("bindings1_fval").last_expression == 'ch("./gain")'
     assert all("inputs" not in payload or payload == {"bindings": 0} for payload in node_obj.set_parms_calls[:3])
     assert len(node_obj.set_parms_calls) == 3
     assert result["data"]["bindings_only"] is True
@@ -409,7 +422,7 @@ def test_handle_sync_groups_ports_and_preserves_metadata(monkeypatch) -> None:
         {"name": "geo", "type": "geo", "optional": False},
     ]
     assert result["data"]["outputs"] == [{"name": "dst", "type": "floatn"}]
-    signature_payload = node_obj.set_parms_calls[5]
+    signature_payload = next(payload for payload in node_obj.set_parms_calls if payload.get("input1_name") == "size_ref")
     assert signature_payload["input1_name"] == "size_ref"
     assert signature_payload["input1_type"] == "metadata"
     assert signature_payload["input2_name"] == "stamp0"
@@ -509,11 +522,48 @@ def test_handle_validate_reports_signature_drift_and_invalid_connection(monkeypa
     data = result["data"]
     assert data["signature_matches_kernel"] is False
     assert data["sync_required"] is True
+    assert any("opencl sync" in hint for hint in data["hints"])
     assert data["invalid_connection_count"] == 1
     assert data["errors"] == ["Can't convert Mono to Geometry for geo (at signature index 0)"]
     assert data["inputs"][1]["expected_data_type"] == "Geometry"
     assert data["inputs"][1]["source_output_type"] == "Mono"
     assert data["inputs"][1]["compatible"] is False
+
+
+def test_handle_validate_reports_stale_opencl_binding_rows(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True, optional=False),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+        _binding(name="gain", type="float", portname="gain", fval=2.0, defval=True),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj.setParms({"bindings": 3})
+    node_obj.setParms(
+        {
+            "bindings1_name": "src",
+            "bindings1_type": "layer",
+            "bindings2_name": "dst",
+            "bindings2_type": "layer",
+            "bindings3_name": "gain",
+            "bindings3_type": "float",
+            "bindings3_fval": 2.0,
+        }
+    )
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+        )
+    )
+
+    assert result["ok"] is True
+    hints = result["data"]["hints"]
+    assert any("layer bindings" in hint and "src" in hint and "dst" in hint for hint in hints)
+    assert any("not linked to generated spare parms" in hint and "gain" in hint for hint in hints)
 
 
 def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:

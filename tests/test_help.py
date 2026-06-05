@@ -161,6 +161,15 @@ def test_handle_help_node_parms_list_topic_mentions_legend() -> None:
     assert "legends.node_parm_rows" in result["data"]["notes"][0]
 
 
+def test_handle_help_node_set_topic_includes_input_examples() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "set"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>"
+    assert any("--section inputs" in note for note in result["data"]["notes"])
+    assert any("from_index" in example and "to_index" in example for example in result["data"]["examples"])
+
+
 def test_handle_help_opencl_topic_includes_discovery_context() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl"]))
 

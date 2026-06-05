@@ -226,11 +226,48 @@ def _sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> li
     return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
 
 
+def _parm_bindings(bindings: list[Any]) -> list[Any]:
+    return [
+        binding
+        for binding in bindings
+        if str(_binding_scalar(binding, "type")) in _SPARE_PARM_BINDING_TYPES
+    ]
+
+
 def _binding_row_values(bindings: list[Any]) -> dict[str, Any]:
     parm_values: dict[str, Any] = {}
     for index, binding in enumerate(bindings, start=1):
         parm_values.update(_binding_parm_values(index, binding))
     return parm_values
+
+
+def _set_binding_value_expression(opencl_node: Any, parm_name: str, expression: str) -> None:
+    parm = opencl_node.parm(parm_name)
+    if parm is None:
+        return
+    parm.setExpression(expression)
+
+
+def _link_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
+    for index, binding in enumerate(bindings, start=1):
+        binding_type = str(_binding_scalar(binding, "type"))
+        spare_name = _spare_parm_name(binding)
+        expression = f'ch("./{spare_name}")'
+        prefix = f"bindings{index}_"
+
+        if binding_type == "int":
+            _set_binding_value_expression(opencl_node, f"{prefix}intval", expression)
+        elif binding_type == "float":
+            _set_binding_value_expression(opencl_node, f"{prefix}fval", expression)
+        elif binding_type == "float2":
+            for component in range(1, 3):
+                _set_binding_value_expression(opencl_node, f"{prefix}v2val{component}", f'ch("./{spare_name}{component}")')
+        elif binding_type == "float3":
+            for component in range(1, 4):
+                _set_binding_value_expression(opencl_node, f"{prefix}v3val{component}", f'ch("./{spare_name}{component}")')
+        elif binding_type == "float4":
+            for component in range(1, 5):
+                _set_binding_value_expression(opencl_node, f"{prefix}v4val{component}", f'ch("./{spare_name}{component}")')
 
 
 def _port_signature_entries(bindings: list[Any], *, output: bool) -> list[dict[str, Any]]:
@@ -414,6 +451,87 @@ def _current_input_connections(opencl_node: Any) -> dict[int, dict[str, Any]]:
     return result
 
 
+def _parm_expression(parm: Any) -> str | None:
+    if parm is None:
+        return None
+    try:
+        return str(parm.expression())
+    except Exception:
+        return None
+
+
+def _binding_value_parm_names(index: int, binding_type: str) -> list[tuple[str, str]]:
+    prefix = f"bindings{index}_"
+    if binding_type == "int":
+        return [(f"{prefix}intval", "")]
+    if binding_type == "float":
+        return [(f"{prefix}fval", "")]
+    if binding_type == "float2":
+        return [(f"{prefix}v2val{component}", str(component)) for component in range(1, 3)]
+    if binding_type == "float3":
+        return [(f"{prefix}v3val{component}", str(component)) for component in range(1, 4)]
+    if binding_type == "float4":
+        return [(f"{prefix}v4val{component}", str(component)) for component in range(1, 5)]
+    return []
+
+
+def _binding_row_hints(opencl_node: Any) -> list[str]:
+    bindings_parm = opencl_node.parm("bindings")
+    if bindings_parm is None:
+        return []
+
+    try:
+        binding_count = int(bindings_parm.eval())
+    except Exception:
+        return []
+
+    hints: list[str] = []
+    layer_rows: list[str] = []
+    static_rows: list[str] = []
+
+    for index in range(1, binding_count + 1):
+        name_parm = opencl_node.parm(f"bindings{index}_name")
+        type_parm = opencl_node.parm(f"bindings{index}_type")
+        if name_parm is None or type_parm is None:
+            continue
+
+        try:
+            name = str(name_parm.evalAsString())
+            binding_type = str(type_parm.evalAsString())
+        except Exception:
+            continue
+
+        if binding_type == "layer":
+            layer_rows.append(name)
+            continue
+
+        if binding_type not in _SPARE_PARM_BINDING_TYPES:
+            continue
+
+        expected = f'ch("./{name}")'
+        for parm_name, component_suffix in _binding_value_parm_names(index, binding_type):
+            expr = _parm_expression(opencl_node.parm(parm_name))
+            expected_expr = expected if not component_suffix else f'ch("./{name}{component_suffix}")'
+            if expr != expected_expr:
+                static_rows.append(name)
+                break
+
+    if layer_rows:
+        hints.append(
+            "OpenCL binding rows include layer bindings "
+            f"({', '.join(layer_rows)}); layer bindings should live in Signature inputs/outputs. "
+            "Try: houdini-cli opencl sync <node-path>"
+        )
+    if static_rows:
+        hints.append(
+            "OpenCL parm binding rows are not linked to generated spare parms "
+            f"({', '.join(static_rows)}); UI changes may not affect the kernel. "
+            "Try: houdini-cli opencl sync <node-path>"
+        )
+
+    return hints
+
+
 def _disconnect_input(opencl_node: Any, index: int) -> None:
     try:
         opencl_node.setInput(index, None)
@@ -484,6 +602,9 @@ def _validation_summary(
     desired_output_rows = [{"name": entry["name"], "type": entry["type"]} for entry in desired_outputs]
     signature_matches_kernel = current_inputs == desired_input_rows and current_outputs == desired_output_rows
     messages = _node_messages(opencl_node)
+    hints = _binding_row_hints(opencl_node)
+    if not signature_matches_kernel:
+        hints.append(f"OpenCL signature differs from kernel #bind directives. Try: houdini-cli opencl sync {localize(opencl_node.path())}")
 
     return {
         "node_path": localize(opencl_node.path()),
@@ -499,6 +620,7 @@ def _validation_summary(
         "current_inputs": current_inputs,
         "current_outputs": current_outputs,
         "inputs": input_rows,
+        "hints": hints,
         **messages,
     }
 
@@ -512,6 +634,7 @@ def _sync_bindings(opencl_node: Any, bindings: list[Any]) -> None:
 
     opencl_node.setParms({"bindings": len(bindings)})
     opencl_node.setParms(_binding_row_values(bindings))
+    _link_binding_value_parms(opencl_node, bindings)
 
 
 def _sync_signature(
@@ -568,9 +691,10 @@ def _apply_signature(
         else:
             opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
 
-    spare_parms = _sync_spare_parms(session, opencl_node, bindings)
+    parm_bindings = _parm_bindings(bindings)
+    spare_parms = _sync_spare_parms(session, opencl_node, parm_bindings)
 
-    _sync_bindings(opencl_node, bindings)
+    _sync_bindings(opencl_node, parm_bindings)
     if not bindings_only:
         _sync_signature(opencl_node, input_entries, output_entries)
 
