@@ -224,7 +224,7 @@ def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
 def test_handle_text_set(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "_read_text_input", lambda _value: "hello\nworld\n")
+    monkeypatch.setattr(parm, "read_text_input", lambda _value: "hello\nworld\n")
 
     result = parm.handle_text_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", input="snippet.txt")
@@ -236,7 +236,7 @@ def test_handle_text_set(monkeypatch) -> None:
 def test_handle_full_set(monkeypatch) -> None:
     fake_parm = FakeParm()
     monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "_read_json_input", lambda _value: {"b": 2})
+    monkeypatch.setattr(parm, "read_json_input", lambda _value: {"b": 2})
 
     result = parm.handle_full_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", input="payload.json")

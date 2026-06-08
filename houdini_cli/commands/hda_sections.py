@@ -6,9 +6,9 @@ import argparse
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
+from ..util.input import read_text_input
 from .hda_common import definition_for_node, save_definition
 from .node_common import get_node
-from .parm import _read_text_input
 
 SCRIPT_SECTIONS = {"OnCreated", "OnLoaded", "OnUpdated", "PythonModule"}
 
@@ -57,7 +57,7 @@ def handle_section_get(args: argparse.Namespace) -> dict:
 
 
 def handle_section_set(args: argparse.Namespace) -> dict:
-    text = _read_text_input(args.input)
+    text = read_text_input(args.input)
     with connect(args.host, args.port) as session:
         definition = definition_for_node(get_node(session, args.asset_node))
         definition.addSection(args.name, text)
@@ -84,7 +84,7 @@ def handle_script_get(args: argparse.Namespace) -> dict:
 
 
 def handle_script_set(args: argparse.Namespace) -> dict:
-    text = _read_text_input(args.input)
+    text = read_text_input(args.input)
     with connect(args.host, args.port) as session:
         definition = definition_for_node(get_node(session, args.asset_node))
         definition.addSection(args.name, text)
@@ -133,4 +133,3 @@ def handle_tool_remove(args: argparse.Namespace) -> dict:
             definition.removeSection("Tools.shelf")
         library = save_definition(definition)
         return success_result({"library": library, "removed": True})
-

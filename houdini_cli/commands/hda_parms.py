@@ -7,9 +7,9 @@ from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
+from ..util.input import read_json_input
 from .hda_common import definition_for_node, parm_tree, save_definition
 from .node_common import get_node
-from .parm import _read_json_input
 
 _FOLDER_TYPES = {
     "tabs": "Tabs",
@@ -151,7 +151,7 @@ def _layout_template_from_spec(session: Any, spec: dict[str, Any]) -> Any:
 
 
 def handle_parms_apply(args: argparse.Namespace) -> dict:
-    payload = _read_json_input(args.input)
+    payload = read_json_input(args.input)
     with connect(args.host, args.port) as session:
         node = get_node(session, args.asset_node)
         definition = definition_for_node(node)

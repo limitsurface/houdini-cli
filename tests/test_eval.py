@@ -83,6 +83,7 @@ def test_handle_eval_executes_in_remote_session(monkeypatch) -> None:
             host="localhost",
             port=18811,
             code="import math\nprint(hou.applicationVersionString())\nprint(math.sqrt(9))",
+            input=None,
         )
     )
 
@@ -104,9 +105,24 @@ def test_handle_eval_captures_stderr(monkeypatch) -> None:
             host="localhost",
             port=18811,
             code="emit_stderr('problem\\n')",
+            input=None,
         )
     )
 
     assert result["ok"] is True
     assert result["data"]["stdout"] == ""
     assert result["data"]["stderr"] == "problem\n"
+
+
+def test_handle_eval_reads_code_from_input(monkeypatch) -> None:
+    session = FakeSession()
+    monkeypatch.setattr(eval_command, "connect", FakeConnect(session))
+    monkeypatch.setattr(eval_command, "sync_request_timeout", FakeTimeout())
+    monkeypatch.setattr(eval_command, "localize", lambda value: value)
+    monkeypatch.setattr(eval_command, "read_text_input", lambda source: "print('stdin')\n")
+
+    result = eval_command.handle_eval(
+        Namespace(host="localhost", port=18811, code=None, input="-")
+    )
+
+    assert result["data"]["stdout"] == "stdin\n"

@@ -7,19 +7,23 @@ import argparse
 from ..format.envelopes import success_result
 from ..runtime.timeouts import EVAL_TIMEOUT_SECONDS
 from ..transport.rpyc import connect, localize, sync_request_timeout
+from ..util.input import read_text_input
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("eval", help="Execute Python against the live Houdini session.")
-    parser.add_argument("--code", required=True, help="Python code to execute.")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--code", help="Inline Python code to execute.")
+    source.add_argument("--input", help="UTF-8 file path or '-' to read Python from stdin.")
     parser.set_defaults(handler=handle_eval)
 
 
 def handle_eval(args: argparse.Namespace) -> dict:
+    code = args.code if args.code is not None else read_text_input(args.input)
     with connect(args.host, args.port) as session:
         with sync_request_timeout(session, EVAL_TIMEOUT_SECONDS):
             namespace = session.connection.namespace
-            namespace["_houdini_cli_eval_code"] = args.code
+            namespace["_houdini_cli_eval_code"] = code
             session.connection.execute(
                 """
 import contextlib as _houdini_cli_contextlib

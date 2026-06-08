@@ -7,6 +7,7 @@ from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
+from ..util.input import read_text_input
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -45,15 +46,6 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     delete_parser.add_argument("tool_name", help="Tool internal name.")
     delete_parser.add_argument("--shelf", dest="shelf_name", help="Optional shelf internal name to remove from.")
     delete_parser.set_defaults(handler=handle_tool_delete)
-
-
-def _read_text_input(input_value: str) -> str:
-    if input_value == "-":
-        import sys
-
-        return sys.stdin.read()
-    with open(input_value, encoding="utf-8") as handle:
-        return handle.read()
 
 
 def _shelves(session: Any) -> dict[str, Any]:
@@ -150,7 +142,7 @@ def handle_find(args: argparse.Namespace) -> dict:
 
 
 def handle_tool_add(args: argparse.Namespace) -> dict:
-    script = _read_text_input(args.input)
+    script = read_text_input(args.input)
     with connect(args.host, args.port) as session:
         shelf = _get_shelf(session, args.shelf_name)
         if session.hou.shelves.tool(args.tool_name) is not None:
@@ -185,7 +177,7 @@ def handle_tool_edit(args: argparse.Namespace) -> dict:
                 tool.setLabel(args.label)
                 applied.append("label")
             if args.input is not None:
-                tool.setScript(_read_text_input(args.input))
+                tool.setScript(read_text_input(args.input))
                 applied.append("script")
             if args.shelf_name is not None:
                 shelf = _get_shelf(session, args.shelf_name)

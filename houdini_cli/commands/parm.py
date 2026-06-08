@@ -7,7 +7,7 @@ from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
-from ..util.jsonio import load_json_input
+from ..util.input import read_json_input, read_text_input
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -221,26 +221,8 @@ def handle_tuple_set(args: argparse.Namespace) -> dict:
         return success_result({"parm_path": args.parm_path, "applied": True})
 
 
-def _read_text_input(input_value: str) -> str:
-    if input_value == "-":
-        import sys
-
-        return sys.stdin.read()
-    with open(input_value, encoding="utf-8") as handle:
-        return handle.read()
-
-
-def _read_json_input(input_value: str) -> Any:
-    import json
-
-    if input_value == "-":
-        return load_json_input("-")
-    with open(input_value, encoding="utf-8") as handle:
-        return json.load(handle)
-
-
 def handle_text_set(args: argparse.Namespace) -> dict:
-    text = _read_text_input(args.input)
+    text = read_text_input(args.input)
     with connect(args.host, args.port) as session:
         parm = _get_parm(session, args.parm_path)
         parm.set(text)
@@ -248,7 +230,7 @@ def handle_text_set(args: argparse.Namespace) -> dict:
 
 
 def handle_full_set(args: argparse.Namespace) -> dict:
-    payload = _read_json_input(args.input)
+    payload = read_json_input(args.input)
     with connect(args.host, args.port) as session:
         parm = _get_parm(session, args.parm_path)
         parm.setFromData(payload)
@@ -281,7 +263,7 @@ def handle_expression_get(args: argparse.Namespace) -> dict:
 def handle_expression_set(args: argparse.Namespace) -> dict:
     if bool(args.text is not None) == bool(args.input is not None):
         raise ValueError("Provide exactly one of --text or --input")
-    text = args.text if args.text is not None else _read_text_input(args.input)
+    text = args.text if args.text is not None else read_text_input(args.input)
     with connect(args.host, args.port) as session:
         parm = _get_parm(session, args.parm_path)
         parm.setExpression(text, _expression_language(session, args.language))
@@ -485,7 +467,7 @@ def _apply_template_group(node: Any, owner: Any, group: Any, target: str) -> Non
 
 
 def handle_template_set(args: argparse.Namespace) -> dict:
-    payload = _read_json_input(args.input)
+    payload = read_json_input(args.input)
     if not isinstance(payload, dict):
         raise ValueError("Template patch must be a JSON object")
     with connect(args.host, args.port) as session:

@@ -83,6 +83,22 @@ houdini-cli help hda
 
 ## Common Workflows
 
+Execute multiline Python from a file or stdin:
+
+```powershell
+houdini-cli eval --input script.py
+Get-Content script.py -Raw | houdini-cli eval --input -
+```
+
+```bash
+cat script.py | houdini-cli eval --input -
+```
+
+Commands accepting `--input` consistently read UTF-8 files, or stdin when the
+value is `-`. This applies to eval, multiline parameter values and expressions,
+structured parameter data, shelf scripts, HDA interfaces, and HDA
+sections/scripts.
+
 Save the current scene or save it to a new path:
 
 ```powershell

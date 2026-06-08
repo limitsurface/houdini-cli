@@ -148,7 +148,7 @@ def test_handle_tool_add(monkeypatch) -> None:
     fake_shelves, pipe, _, _, _ = _fixture()
     monkeypatch.setattr(shelf, "connect", FakeConnect(FakeSession(fake_shelves)))
     monkeypatch.setattr(shelf, "localize", lambda value: value)
-    monkeypatch.setattr(shelf, "_read_text_input", lambda _value: "print('hi')")
+    monkeypatch.setattr(shelf, "read_text_input", lambda _value: "print('hi')")
 
     result = shelf.handle_tool_add(
         Namespace(host="localhost", port=18811, shelf_name="scy_Pipe", tool_name="new_tool", label="New Tool", input="tool.py")
@@ -162,7 +162,7 @@ def test_handle_tool_edit(monkeypatch) -> None:
     fake_shelves, pipe, other, _, tool_b = _fixture()
     monkeypatch.setattr(shelf, "connect", FakeConnect(FakeSession(fake_shelves)))
     monkeypatch.setattr(shelf, "localize", lambda value: value)
-    monkeypatch.setattr(shelf, "_read_text_input", lambda _value: "print('updated')")
+    monkeypatch.setattr(shelf, "read_text_input", lambda _value: "print('updated')")
 
     result = shelf.handle_tool_edit(
         Namespace(host="localhost", port=18811, tool_name="print_selected_node_name_test", label="Better", shelf_name="misc", input="tool.py")
@@ -209,7 +209,7 @@ def test_handle_tool_add_rejects_existing(monkeypatch) -> None:
     fake_shelves, *_ = _fixture()
     monkeypatch.setattr(shelf, "connect", FakeConnect(FakeSession(fake_shelves)))
     monkeypatch.setattr(shelf, "localize", lambda value: value)
-    monkeypatch.setattr(shelf, "_read_text_input", lambda _value: "print('hi')")
+    monkeypatch.setattr(shelf, "read_text_input", lambda _value: "print('hi')")
 
     with pytest.raises(ValueError, match="already exists"):
         shelf.handle_tool_add(
