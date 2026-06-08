@@ -27,6 +27,14 @@ class FakeNode:
         self.created = None
         self.parent_node = None
         self.selected_calls = []
+        self.renamed = None
+        self.display = False
+        self.render = False
+        self.bypassed = False
+        self.compressed = False
+        self._children = []
+        self._parms = []
+        self._input_connections = []
 
     def path(self):
         return self._path
@@ -41,7 +49,16 @@ class FakeNode:
         return FakeNodeType()
 
     def children(self):
-        return []
+        return self._children
+
+    def allSubChildren(self):
+        return self._children
+
+    def parms(self):
+        return self._parms
+
+    def inputConnections(self):
+        return self._input_connections
 
     def inputs(self):
         return []
@@ -50,13 +67,13 @@ class FakeNode:
         return []
 
     def isDisplayFlagSet(self):
-        return False
+        return self.display
 
     def isRenderFlagSet(self):
-        return False
+        return self.render
 
     def isBypassed(self):
-        return False
+        return self.bypassed
 
     def createNode(self, node_type, name=None):
         self.created = FakeNode(f"{self._path}/{name or node_type}1", name or f"{node_type}1")
@@ -64,6 +81,27 @@ class FakeNode:
 
     def destroy(self):
         self.destroyed = True
+
+    def setName(self, name, unique_name=False):
+        self.renamed = (name, unique_name)
+        self._name = f"{name}1" if unique_name else name
+        parent_path = self._path.rsplit("/", 1)[0]
+        self._path = f"{parent_path}/{self._name}"
+
+    def setDisplayFlag(self, value):
+        self.display = value
+
+    def setRenderFlag(self, value):
+        self.render = value
+
+    def bypass(self, value):
+        self.bypassed = value
+
+    def isGenericFlagSet(self, _flag):
+        return self.compressed
+
+    def setGenericFlag(self, _flag, value):
+        self.compressed = value
 
     def setSelected(self, selected, clear_all_selected=False):
         self.selected_calls.append((selected, clear_all_selected))
@@ -89,12 +127,25 @@ class FakeNetworkEditor:
         self.cleared = True
 
 
+class FakeParm:
+    def __init__(self, path, references=None):
+        self._path = path
+        self._references = references or []
+
+    def path(self):
+        return self._path
+
+    def references(self):
+        return self._references
+
+
 class FakeSession:
     def __init__(self, nodes: dict[str, FakeNode], pane_tabs=None) -> None:
         self.hou = self
         self.nodes = nodes
         self._pane_tabs = pane_tabs or []
         self.ui = self
+        self.nodeFlag = type("NodeFlag", (), {"Compress": object()})
 
     def node(self, path):
         return self.nodes.get(path)
@@ -104,6 +155,9 @@ class FakeSession:
 
     def paneTabs(self):
         return self._pane_tabs
+
+    def moveNodesTo(self, nodes, destination):
+        return destination.moved_nodes
 
 
 class FakeConnect:
@@ -157,6 +211,115 @@ def test_handle_delete(monkeypatch) -> None:
     assert fake.destroyed is True
 
 
+def test_handle_rename(monkeypatch) -> None:
+    fake = FakeNode("/obj/geo1/old", "old")
+    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({fake.path(): fake})))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_rename(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/old",
+            new_name="renamed",
+            unique=False,
+        )
+    )
+
+    assert result["data"]["old_path"] == "/obj/geo1/old"
+    assert result["data"]["new_path"] == "/obj/geo1/renamed"
+    assert fake.renamed == ("renamed", False)
+
+
+def test_handle_copy_returns_path_map(monkeypatch) -> None:
+    source_parent = FakeNode("/obj/source", "source")
+    destination = FakeNode("/obj/destination", "destination")
+    first = FakeNode("/obj/source/a", "a")
+    second = FakeNode("/obj/source/b", "b")
+    first.parent_node = source_parent
+    second.parent_node = source_parent
+    copied = [FakeNode("/obj/destination/a", "a"), FakeNode("/obj/destination/b", "b")]
+    destination.copyItems = lambda items, **kwargs: copied
+    session = FakeSession(
+        {
+            source_parent.path(): source_parent,
+            destination.path(): destination,
+            first.path(): first,
+            second.path(): second,
+        }
+    )
+    monkeypatch.setattr(node, "connect", FakeConnect(session))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_copy(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_paths=[first.path(), second.path()],
+            parent=destination.path(),
+        )
+    )
+
+    assert result["data"]["path_map"] == {
+        "/obj/source/a": "/obj/destination/a",
+        "/obj/source/b": "/obj/destination/b",
+    }
+
+
+def test_handle_move_returns_path_map(monkeypatch) -> None:
+    source_parent = FakeNode("/obj/source", "source")
+    destination = FakeNode("/obj/destination", "destination")
+    first = FakeNode("/obj/source/a", "a")
+    first.parent_node = source_parent
+    moved = [FakeNode("/obj/destination/a", "a")]
+    destination.moved_nodes = moved
+    session = FakeSession(
+        {
+            source_parent.path(): source_parent,
+            destination.path(): destination,
+            first.path(): first,
+        }
+    )
+    monkeypatch.setattr(node, "connect", FakeConnect(session))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_move(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_paths=[first.path()],
+            parent=destination.path(),
+        )
+    )
+
+    assert result["data"]["path_map"] == {"/obj/source/a": "/obj/destination/a"}
+
+
+def test_handle_flags_set(monkeypatch) -> None:
+    fake = FakeNode()
+    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({fake.path(): fake})))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_flags_set(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=fake.path(),
+            display=True,
+            render=False,
+            bypass=True,
+            compress=False,
+        )
+    )
+
+    assert result["data"]["flags"] == {
+        "display": True,
+        "render": False,
+        "bypass": True,
+        "compress": False,
+    }
+
+
 def test_handle_get_section_parms(monkeypatch) -> None:
     fake = FakeNode()
     fake.parmsAsData = lambda brief=False: {"brief": brief, "parms": True}
@@ -182,6 +345,34 @@ def test_handle_get_section_inputs(monkeypatch) -> None:
     )
     assert result["ok"] is True
     assert result["data"]["value"] == [{"from": "a", "to_index": 0}]
+
+
+def test_handle_get_section_references_external_only(monkeypatch) -> None:
+    root = FakeNode("/obj/geo1/subnet1", "subnet1")
+    child = FakeNode("/obj/geo1/subnet1/child", "child")
+    internal = FakeParm("/obj/geo1/subnet1/other/value")
+    external = FakeParm("/obj/geo1/config/value")
+    child._parms = [
+        FakeParm("/obj/geo1/subnet1/child/internal", [internal]),
+        FakeParm("/obj/geo1/subnet1/child/external", [external]),
+    ]
+    root._children = [child]
+    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({root.path(): root})))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_get(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=root.path(),
+            section="references",
+            external_only=True,
+        )
+    )
+
+    assert result["data"]["counts"]["parameter_references"] == 1
+    assert result["data"]["parameter_references"][0]["to_parm"] == "/obj/geo1/config/value"
+    assert result["data"]["parameter_references"][0]["external"] is True
 
 
 def test_handle_get_section_full(monkeypatch) -> None:

@@ -24,12 +24,24 @@ class FakeHou:
         )
         self.hmath = SimpleNamespace(buildRotate=lambda rotates: FakeRotateBuilder(rotates))
         self.ui = FakeUI([])
+        self._hip_path = "C:/test.hip"
+        self._unsaved = True
+        self.saved_paths = []
 
     def applicationVersionString(self):
         return "21.0.512"
 
     def path(self):
-        return "C:/test.hip"
+        return self._hip_path
+
+    def hasUnsavedChanges(self):
+        return self._unsaved
+
+    def save(self, file_name=None):
+        if file_name is not None:
+            self._hip_path = file_name
+        self.saved_paths.append(file_name)
+        self._unsaved = False
 
     def isUIAvailable(self):
         return True
@@ -238,6 +250,44 @@ class FakeAssetUtils:
                 "res": res,
                 "croptocamera": croptocamera,
             }
+        )
+
+
+def test_handle_save_saves_current_scene(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    monkeypatch.setattr(session, "connect", FakeConnect(FakeSession(fake_hou)))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_save(Namespace(host="localhost", port=18811))
+
+    assert fake_hou.saved_paths == [None]
+    assert result == {"ok": True, "data": {"hip_file": "C:/test.hip", "modified": False}}
+
+
+def test_handle_save_as_resolves_path_and_creates_parent(monkeypatch) -> None:
+    fake_hou = FakeHou()
+    fake_session = FakeSession(fake_hou)
+    monkeypatch.setattr(session, "connect", FakeConnect(fake_session))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    result = session.handle_save_as(
+        Namespace(host="localhost", port=18811, path="$HIP/scenes/test.hip", force=False)
+    )
+
+    assert fake_hou.saved_paths == ["C:/test/scenes/test.hip"]
+    assert fake_session.connection.modules.os.created == [("C:/test/scenes", True)]
+    assert result["data"] == {"hip_file": "C:/test/scenes/test.hip", "modified": False}
+
+
+def test_handle_save_as_requires_force_to_overwrite(monkeypatch) -> None:
+    fake_session = FakeSession(FakeHou())
+    fake_session.connection.modules.os.files["D:/shots/test.hip"] = 1
+    monkeypatch.setattr(session, "connect", FakeConnect(fake_session))
+    monkeypatch.setattr(session, "localize", lambda value: value)
+
+    with pytest.raises(ValueError, match="use --force"):
+        session.handle_save_as(
+            Namespace(host="localhost", port=18811, path="D:/shots/test.hip", force=False)
         )
 
 

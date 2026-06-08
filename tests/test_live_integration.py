@@ -75,13 +75,13 @@ print(out.path())
         assert exit_code == 0
         assert payload["ok"] is True
 
-        exit_code, payload, _ = _run_cli(["parm", "set", f"{obj_path}/box1/sizex", "--json", "2.5"], capsys)
+        exit_code, payload, _ = _run_cli(["parm", "set", f"{obj_path}/box1/sizex", "2.5"], capsys)
         assert exit_code == 0
         assert payload["data"]["applied"] is True
 
         exit_code, payload, _ = _run_cli(["parm", "get", f"{obj_path}/box1/sizex"], capsys)
         assert exit_code == 0
-        assert payload["data"]["value"] == [2.5, 1.0, 1.0]
+        assert payload["data"]["value"] == 2.5
 
         exit_code, payload, _ = _run_cli(["attrib", "list", out_path, "--class", "point"], capsys)
         assert exit_code == 0

@@ -97,6 +97,19 @@ HELP_TREE = {
                 "usage": "houdini-cli session ping",
                 "examples": ["uv run houdini-cli session ping"],
             },
+            "save": {
+                "description": "Save the current Houdini scene to its existing HIP path.",
+                "usage": "houdini-cli session save",
+            },
+            "save-as": {
+                "description": "Save the current Houdini scene to a new HIP path.",
+                "usage": "houdini-cli session save-as <path> [--force]",
+                "notes": [
+                    "Houdini variables in the path are expanded",
+                    "existing destinations require --force",
+                    "missing parent directories are created",
+                ],
+            },
             "frame": {
                 "description": "Read or set the current timeline frame.",
                 "usage": "houdini-cli session frame [<frame>]",
@@ -244,6 +257,57 @@ HELP_TREE = {
                     "uv run houdini-cli parm full-set /obj/cli_attrib_live/copytopoints1/targetattribs --input payload.json",
                 ],
             },
+            "expression": {
+                "description": "Inspect, set, or clear parameter expressions.",
+                "children": {
+                    "get": {
+                        "description": "Read a parameter expression and language.",
+                        "usage": "houdini-cli parm expression get <parm-path>",
+                    },
+                    "set": {
+                        "description": "Set a parameter expression from an argument, file, or stdin.",
+                        "usage": "houdini-cli parm expression set <parm-path> [--language hscript|python] (--text TEXT | --input <path-or-'-'>)",
+                    },
+                    "clear": {
+                        "description": "Clear expressions/keyframes and optionally preserve the evaluated value.",
+                        "usage": "houdini-cli parm expression clear <parm-path> [--keep-value]",
+                    },
+                },
+            },
+            "reference": {
+                "description": "Create a typed HScript reference from one parameter to another.",
+                "usage": "houdini-cli parm reference <target-parm> <source-parm> [--relative|--absolute]",
+                "notes": [
+                    "uses chs() for string parameters and ch() for numeric parameters",
+                    "relative references are the default",
+                ],
+            },
+            "template": {
+                "description": "Inspect or patch parameter-template UI and default metadata.",
+                "children": {
+                    "get": {
+                        "description": "Read a focused parameter-template summary.",
+                        "usage": "houdini-cli parm template get <parm-path> [--target instance|definition]",
+                    },
+                    "set": {
+                        "description": "Apply a partial parameter-template patch from JSON.",
+                        "usage": "houdini-cli parm template set <parm-path> [--target instance|definition] --input <path-or-'-'>",
+                        "notes": [
+                            "supports label, help, tags, default, numeric ranges, strictness, join-with-next, and conversion to a named menu",
+                            "definition targeting updates and saves the owning HDA definition",
+                        ],
+                    },
+                },
+            },
+            "default": {
+                "description": "Modify parameter-template defaults.",
+                "children": {
+                    "set": {
+                        "description": "Set a template default from the current value or JSON.",
+                        "usage": "houdini-cli parm default set <parm-path> [--target instance|definition] (--current | --value JSON)",
+                    },
+                },
+            },
         }
     },
     "node": {
@@ -256,14 +320,38 @@ HELP_TREE = {
                 "description": "Create a new node under a parent network.",
                 "usage": "houdini-cli node create <parent-path> <node-type> [--name <node-name>]",
             },
+            "rename": {
+                "description": "Rename one node and return its old and new paths.",
+                "usage": "houdini-cli node rename <node-path> <new-name> [--unique]",
+            },
+            "copy": {
+                "description": "Copy one or more nodes to another parent while preserving internal wiring.",
+                "usage": "houdini-cli node copy <node-path> [<node-path> ...] --parent <network-path>",
+                "notes": [
+                    "all source nodes must share one parent network",
+                    "returns an old-path to new-path map",
+                ],
+            },
+            "move": {
+                "description": "Move one or more nodes to another parent while preserving internal wiring.",
+                "usage": "houdini-cli node move <node-path> [<node-path> ...] --parent <network-path>",
+                "notes": [
+                    "all source nodes must share one parent network",
+                    "this reparents nodes; it does not change Network Editor positions",
+                ],
+            },
             "delete": {
                 "description": "Delete a node.",
                 "usage": "houdini-cli node delete <node-path>",
             },
             "get": {
                 "description": "Read a focused node summary or a structured node section.",
-                "usage": "houdini-cli node get <node-path> [--section parms|inputs|full]",
+                "usage": "houdini-cli node get <node-path> [--section parms|inputs|references|full] [--external-only]",
                 "examples": ["uv run houdini-cli node get /obj/cli_attrib_live/OUT --section inputs"],
+                "notes": [
+                    "references reports parameter dependency targets and explicit input connections",
+                    "--external-only applies to the references section and filters dependencies outside the inspected root",
+                ],
             },
             "errors": {
                 "description": "Read errors, warnings, and messages from one or more nodes.",
@@ -286,6 +374,22 @@ HELP_TREE = {
                     'Get-Content inputs.json | uv run houdini-cli node set /obj/copnet/opencl1 --section inputs --json -',
                     'uv run houdini-cli node set /obj/copnet/merge1 --section inputs --json "[{\\"from\\":\\"/obj/copnet/A\\",\\"from_index\\":0,\\"to_index\\":0},{\\"from\\":\\"/obj/copnet/B\\",\\"from_index\\":0,\\"to_index\\":1}]"',
                 ],
+            },
+            "flags": {
+                "description": "Read or set focused display, render, bypass, and Compress flags.",
+                "children": {
+                    "get": {
+                        "description": "Read focused node flags.",
+                        "usage": "houdini-cli node flags get <node-path>",
+                    },
+                    "set": {
+                        "description": "Set one or more focused node flags.",
+                        "usage": "houdini-cli node flags set <node-path> [--display BOOL] [--render BOOL] [--bypass BOOL] [--compress BOOL]",
+                        "notes": [
+                            "Compress controls expanded or compact node presentation, including COP live previews",
+                        ],
+                    },
+                },
             },
             "list": {
                 "description": "List nodes under a root path in a compact row format with bounded traversal.",
@@ -335,6 +439,99 @@ HELP_TREE = {
                 "notes": ["requires shared parent network and graphical Houdini UI"],
             },
         }
+    },
+    "hda": {
+        "description": "Create, inspect, package, update, and validate Houdini digital assets.",
+        "children": {
+            "inspect": {
+                "description": "Summarize an HDA instance, definition, interface, sections, tools, and library.",
+                "usage": "houdini-cli hda inspect <asset-node> [--parms] [--sections] [--tools]",
+            },
+            "definitions": {
+                "description": "List HDA definitions by library, category, namespace, or name.",
+                "usage": "houdini-cli hda definitions [--library PATH] [--category CATEGORY] [--namespace NS] [--name TEXT]",
+            },
+            "libraries": {
+                "description": "List loaded HDA libraries and the definitions they provide.",
+                "usage": "houdini-cli hda libraries",
+            },
+            "package": {
+                "description": "Create, publish, and validate an HDA from an existing plain subnet.",
+                "usage": "houdini-cli hda package <subnet-path> --type-name TYPE --label LABEL --library PATH [options]",
+                "notes": ["the initial implementation packages existing subnets; explicit node lists and selection follow later"],
+            },
+            "create": {
+                "description": "Convert an existing plain subnet into a digital asset.",
+                "usage": "houdini-cli hda create <subnet-path> --type-name TYPE --label LABEL --library PATH [options]",
+            },
+            "update": {
+                "description": "Update selected HDA definition surfaces from an editable instance.",
+                "usage": "houdini-cli hda update <asset-node> [--contents] [--interface] [--sections] [--tools] [--all] [--validate]",
+                "notes": ["without surface flags, contents is updated; --all uses contents -> interface -> sections -> tools -> save -> match -> validate"],
+            },
+            "save": {
+                "description": "Save an HDA definition to its current or specified library.",
+                "usage": "houdini-cli hda save <asset-node> [--library PATH]",
+            },
+            "instantiate": {
+                "description": "Create a new instance of an installed HDA type.",
+                "usage": "houdini-cli hda instantiate <type-name> --parent PATH [--name NAME] [--input NODE] [--expanded]",
+            },
+            "match": {
+                "description": "Discard instance edits and match the current HDA definition.",
+                "usage": "houdini-cli hda match <asset-node> [--force]",
+            },
+            "unlock": {
+                "description": "Allow editing of an HDA instance's contents.",
+                "usage": "houdini-cli hda unlock <asset-node> [--propagate]",
+            },
+            "install": {
+                "description": "Install an HDA library into the current Houdini session.",
+                "usage": "houdini-cli hda install <library> [--force]",
+            },
+            "uninstall": {
+                "description": "Uninstall an HDA library from the current Houdini session.",
+                "usage": "houdini-cli hda uninstall <library> --force",
+            },
+            "validate": {
+                "description": "Validate definition state, fresh instantiation, cooking, and interface behavior.",
+                "usage": "houdini-cli hda validate <asset-node> [--fresh-instance] [--cook] [--frames CSV] [--strict]",
+            },
+            "parms": {
+                "description": "Inspect, apply, promote, and synchronize HDA parameters.",
+                "children": {
+                    "inspect": {"description": "Inspect the published HDA parameter hierarchy.", "usage": "houdini-cli hda parms inspect <asset-node>"},
+                    "apply": {"description": "Apply a declarative HDA parameter interface.", "usage": "houdini-cli hda parms apply <asset-node> --input <path-or-'-'> [--replace-all]"},
+                    "promote": {"description": "Promote an internal parameter onto the HDA interface.", "usage": "houdini-cli hda parms promote <asset-node> <internal-parm> --name NAME [options]"},
+                    "defaults": {"description": "Synchronize HDA defaults from current values.", "usage": "houdini-cli hda parms defaults <asset-node> --from-current"},
+                },
+            },
+            "section": {
+                "description": "List, read, write, or delete embedded HDA definition sections.",
+                "children": {
+                    "list": {"description": "List embedded section names and sizes.", "usage": "houdini-cli hda section list <asset-node>"},
+                    "get": {"description": "Read an embedded section.", "usage": "houdini-cli hda section get <asset-node> <name> [--output PATH]"},
+                    "set": {"description": "Create or replace an embedded section.", "usage": "houdini-cli hda section set <asset-node> <name> --input <path-or-'-'>"},
+                    "delete": {"description": "Delete an embedded section.", "usage": "houdini-cli hda section delete <asset-node> <name> --force"},
+                },
+            },
+            "script": {
+                "description": "Manage common OnCreated, OnLoaded, OnUpdated, and PythonModule sections.",
+                "children": {
+                    "get": {"description": "Read a common HDA script section.", "usage": "houdini-cli hda script get <asset-node> <name>"},
+                    "set": {"description": "Create or replace a common HDA script section.", "usage": "houdini-cli hda script set <asset-node> <name> --input <path-or-'-'>"},
+                    "delete": {"description": "Delete a common HDA script section.", "usage": "houdini-cli hda script delete <asset-node> <name> --force"},
+                },
+            },
+            "tool": {
+                "description": "Inspect, create, or remove generated Tab-menu tool metadata.",
+                "children": {
+                    "inspect": {"description": "Inspect Tools.shelf metadata.", "usage": "houdini-cli hda tool inspect <asset-node>"},
+                    "set": {"description": "Create or replace generated Tab-menu tool metadata.", "usage": "houdini-cli hda tool set <asset-node> --submenu PATH [--context CATEGORY] [--icon ICON]"},
+                    "remove": {"description": "Remove generated Tab-menu tool metadata.", "usage": "houdini-cli hda tool remove <asset-node> --force"},
+                },
+            },
+        },
     },
     "cop": {
         "description": "Inspect cooked Copernicus image/layer data.",

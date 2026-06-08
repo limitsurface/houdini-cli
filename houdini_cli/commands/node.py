@@ -23,6 +23,26 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     create_parser.add_argument("--name", help="Optional node name.")
     create_parser.set_defaults(handler=handle_create)
 
+    rename_parser = node_subparsers.add_parser("rename", help="Rename a node.")
+    rename_parser.add_argument("node_path", help="Node path to rename.")
+    rename_parser.add_argument("new_name", help="New node name.")
+    rename_parser.add_argument(
+        "--unique",
+        action="store_true",
+        help="Allow Houdini to choose a unique suffix when the name is occupied.",
+    )
+    rename_parser.set_defaults(handler=handle_rename)
+
+    copy_parser = node_subparsers.add_parser("copy", help="Copy nodes to another network.")
+    copy_parser.add_argument("node_paths", nargs="+", help="Node paths to copy.")
+    copy_parser.add_argument("--parent", required=True, help="Destination parent network.")
+    copy_parser.set_defaults(handler=handle_copy)
+
+    move_parser = node_subparsers.add_parser("move", help="Move nodes to another network.")
+    move_parser.add_argument("node_paths", nargs="+", help="Node paths to move.")
+    move_parser.add_argument("--parent", required=True, help="Destination parent network.")
+    move_parser.set_defaults(handler=handle_move)
+
     delete_parser = node_subparsers.add_parser("delete", help="Delete a node.")
     delete_parser.add_argument("node_path", help="Node path to delete.")
     delete_parser.set_defaults(handler=handle_delete)
@@ -50,8 +70,13 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     get_parser.add_argument("node_path", help="Node path to inspect.")
     get_parser.add_argument(
         "--section",
-        choices=("parms", "inputs", "full"),
+        choices=("parms", "inputs", "references", "full"),
         help="Return a structured node section instead of the default focused summary.",
+    )
+    get_parser.add_argument(
+        "--external-only",
+        action="store_true",
+        help="For references, return only dependencies outside the inspected root.",
     )
     get_parser.set_defaults(handler=handle_get)
 
@@ -81,6 +106,21 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     )
     set_parser.set_defaults(handler=handle_set)
 
+    flags_parser = node_subparsers.add_parser("flags", help="Read or set focused node flags.")
+    flags_subparsers = flags_parser.add_subparsers(dest="node_flags_command", required=True)
+
+    flags_get_parser = flags_subparsers.add_parser("get", help="Read focused node flags.")
+    flags_get_parser.add_argument("node_path", help="Node path to inspect.")
+    flags_get_parser.set_defaults(handler=handle_flags_get)
+
+    flags_set_parser = flags_subparsers.add_parser("set", help="Set focused node flags.")
+    flags_set_parser.add_argument("node_path", help="Node path to modify.")
+    flags_set_parser.add_argument("--display", type=_parse_bool)
+    flags_set_parser.add_argument("--render", type=_parse_bool)
+    flags_set_parser.add_argument("--bypass", type=_parse_bool)
+    flags_set_parser.add_argument("--compress", type=_parse_bool)
+    flags_set_parser.set_defaults(handler=handle_flags_set)
+
     parm.register_node_parms_parser(node_subparsers)
     query.register_parser(node_subparsers)
 
@@ -90,6 +130,88 @@ def handle_create(args: argparse.Namespace) -> dict:
         parent = get_node(session, args.parent_path)
         created = parent.createNode(args.node_type, args.name) if args.name else parent.createNode(args.node_type)
         return success_result(node_summary(created))
+
+
+def _parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected boolean value, got: {value}")
+
+
+def handle_rename(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        node = get_node(session, args.node_path)
+        old_path = localize(node.path())
+        node.setName(args.new_name, unique_name=args.unique)
+        return success_result(
+            {
+                "old_path": old_path,
+                "new_path": localize(node.path()),
+                "name": localize(node.name()),
+            }
+        )
+
+
+def _get_nodes_with_shared_parent(session: Any, node_paths: list[str]) -> tuple[list[Any], Any]:
+    nodes = [get_node(session, path) for path in node_paths]
+    parents = [node.parent() for node in nodes]
+    if not parents or parents[0] is None:
+        raise ValueError("Nodes must have a parent network")
+    parent_paths = {localize(parent.path()) for parent in parents}
+    if len(parent_paths) != 1:
+        raise ValueError("Nodes do not share the same parent network")
+    return nodes, parents[0]
+
+
+def _path_map(old_paths: list[str], nodes: Any) -> dict[str, str]:
+    returned_nodes = list(nodes)
+    if len(returned_nodes) != len(old_paths):
+        raise RuntimeError("Houdini returned an unexpected number of nodes")
+    return {
+        old_path: localize(node.path())
+        for old_path, node in zip(old_paths, returned_nodes, strict=True)
+    }
+
+
+def handle_copy(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        nodes, source_parent = _get_nodes_with_shared_parent(session, args.node_paths)
+        destination = get_node(session, args.parent)
+        old_paths = [localize(node.path()) for node in nodes]
+        copied = destination.copyItems(
+            tuple(nodes),
+            channel_reference_originals=False,
+            relative_references=True,
+        )
+        return success_result(
+            {
+                "operation": "copy",
+                "source_parent": localize(source_parent.path()),
+                "destination_parent": localize(destination.path()),
+                "path_map": _path_map(old_paths, copied),
+            }
+        )
+
+
+def handle_move(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        nodes, source_parent = _get_nodes_with_shared_parent(session, args.node_paths)
+        destination = get_node(session, args.parent)
+        if localize(source_parent.path()) == localize(destination.path()):
+            raise ValueError("Source and destination parent networks are the same")
+        old_paths = [localize(node.path()) for node in nodes]
+        moved = session.hou.moveNodesTo(tuple(nodes), destination)
+        return success_result(
+            {
+                "operation": "move",
+                "source_parent": localize(source_parent.path()),
+                "destination_parent": localize(destination.path()),
+                "path_map": _path_map(old_paths, moved),
+            }
+        )
 
 
 def handle_delete(args: argparse.Namespace) -> dict:
@@ -183,6 +305,8 @@ def handle_get(args: argparse.Namespace) -> dict:
                     "value": localize(node.inputsAsData()),
                 }
             )
+        if args.section == "references":
+            return success_result(_reference_payload(node, external_only=args.external_only))
         if args.section == "full":
             return success_result(
                 {
@@ -202,6 +326,60 @@ def handle_get(args: argparse.Namespace) -> dict:
                 }
             )
         return success_result(node_summary(node))
+
+
+def _is_within_root(path: str, root_path: str) -> bool:
+    return path == root_path or path.startswith(root_path.rstrip("/") + "/")
+
+
+def _reference_payload(root: Any, *, external_only: bool) -> dict[str, Any]:
+    root_path = localize(root.path())
+    nodes = [root, *list(root.allSubChildren())]
+    parm_rows = []
+    input_rows = []
+
+    for node in nodes:
+        node_path = localize(node.path())
+        for parameter in node.parms():
+            try:
+                targets = list(parameter.references())
+            except Exception:
+                continue
+            for target in targets:
+                target_path = localize(target.path())
+                target_node_path = target_path.rsplit("/", 1)[0]
+                external = not _is_within_root(target_node_path, root_path)
+                if external_only and not external:
+                    continue
+                parm_rows.append(
+                    {
+                        "from_parm": localize(parameter.path()),
+                        "to_parm": target_path,
+                        "external": external,
+                    }
+                )
+
+        for connection in node.inputConnections():
+            source = connection.inputNode()
+            if source is None:
+                continue
+            source_path = localize(source.path())
+            external = not _is_within_root(source_path, root_path)
+            if external_only and not external:
+                continue
+            input_rows.append({**_connection_payload(connection), "external": external})
+
+    return {
+        "node_path": root_path,
+        "section": "references",
+        "external_only": external_only,
+        "parameter_references": parm_rows,
+        "input_references": input_rows,
+        "counts": {
+            "parameter_references": len(parm_rows),
+            "input_references": len(input_rows),
+        },
+    }
 
 
 def _node_messages(node: Any) -> dict[str, list[str]]:
@@ -268,5 +446,53 @@ def handle_set(args: argparse.Namespace) -> dict:
                 "node_path": args.node_path,
                 "section": args.section,
                 "applied": True,
+            }
+        )
+
+
+def _node_flags(session: Any, node: Any) -> dict[str, bool | None]:
+    flags: dict[str, bool | None] = {
+        "display": bool(localize(node.isDisplayFlagSet())) if hasattr(node, "isDisplayFlagSet") else None,
+        "render": bool(localize(node.isRenderFlagSet())) if hasattr(node, "isRenderFlagSet") else None,
+        "bypass": bool(localize(node.isBypassed())) if hasattr(node, "isBypassed") else None,
+        "compress": None,
+    }
+    if hasattr(node, "isGenericFlagSet"):
+        flags["compress"] = bool(localize(node.isGenericFlagSet(session.hou.nodeFlag.Compress)))
+    return flags
+
+
+def handle_flags_get(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        node = get_node(session, args.node_path)
+        return success_result({"node_path": localize(node.path()), "flags": _node_flags(session, node)})
+
+
+def handle_flags_set(args: argparse.Namespace) -> dict:
+    requested = {
+        "display": args.display,
+        "render": args.render,
+        "bypass": args.bypass,
+        "compress": args.compress,
+    }
+    changes = {name: value for name, value in requested.items() if value is not None}
+    if not changes:
+        raise ValueError("At least one flag option is required")
+
+    with connect(args.host, args.port) as session:
+        node = get_node(session, args.node_path)
+        if args.display is not None:
+            node.setDisplayFlag(args.display)
+        if args.render is not None:
+            node.setRenderFlag(args.render)
+        if args.bypass is not None:
+            node.bypass(args.bypass)
+        if args.compress is not None:
+            node.setGenericFlag(session.hou.nodeFlag.Compress, args.compress)
+        return success_result(
+            {
+                "node_path": localize(node.path()),
+                "applied": changes,
+                "flags": _node_flags(session, node),
             }
         )

@@ -46,6 +46,57 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     full_set_parser.add_argument("--input", required=True, help="File path or '-' to read JSON from stdin.")
     full_set_parser.set_defaults(handler=handle_full_set)
 
+    expression_parser = parm_subparsers.add_parser("expression", help="Inspect or modify parameter expressions.")
+    expression_subparsers = expression_parser.add_subparsers(dest="parm_expression_command", required=True)
+
+    expression_get_parser = expression_subparsers.add_parser("get", help="Read a parameter expression.")
+    expression_get_parser.add_argument("parm_path")
+    expression_get_parser.set_defaults(handler=handle_expression_get)
+
+    expression_set_parser = expression_subparsers.add_parser("set", help="Set a parameter expression.")
+    expression_set_parser.add_argument("parm_path")
+    expression_set_parser.add_argument("--language", choices=("hscript", "python"), default="hscript")
+    expression_set_parser.add_argument("--text", help="Expression text.")
+    expression_set_parser.add_argument("--input", help="File path or '-' to read expression text.")
+    expression_set_parser.set_defaults(handler=handle_expression_set)
+
+    expression_clear_parser = expression_subparsers.add_parser("clear", help="Clear parameter keyframes/expressions.")
+    expression_clear_parser.add_argument("parm_path")
+    expression_clear_parser.add_argument("--keep-value", action="store_true")
+    expression_clear_parser.set_defaults(handler=handle_expression_clear)
+
+    reference_parser = parm_subparsers.add_parser("reference", help="Reference one parameter from another.")
+    reference_parser.add_argument("target_parm", help="Parameter that will receive the reference.")
+    reference_parser.add_argument("source_parm", help="Parameter to reference.")
+    reference_mode = reference_parser.add_mutually_exclusive_group()
+    reference_mode.add_argument("--relative", action="store_true", help="Use a relative HScript reference.")
+    reference_mode.add_argument("--absolute", action="store_true", help="Use an absolute HScript reference.")
+    reference_parser.set_defaults(handler=handle_reference)
+
+    template_parser = parm_subparsers.add_parser("template", help="Inspect or modify parameter templates.")
+    template_subparsers = template_parser.add_subparsers(dest="parm_template_command", required=True)
+
+    template_get_parser = template_subparsers.add_parser("get", help="Read a parameter template summary.")
+    template_get_parser.add_argument("parm_path")
+    template_get_parser.add_argument("--target", choices=("instance", "definition"), default="instance")
+    template_get_parser.set_defaults(handler=handle_template_get)
+
+    template_set_parser = template_subparsers.add_parser("set", help="Apply a partial parameter template patch.")
+    template_set_parser.add_argument("parm_path")
+    template_set_parser.add_argument("--target", choices=("instance", "definition"), default="instance")
+    template_set_parser.add_argument("--input", required=True, help="JSON file path or '-' for stdin.")
+    template_set_parser.set_defaults(handler=handle_template_set)
+
+    default_parser = parm_subparsers.add_parser("default", help="Set a parameter-template default.")
+    default_subparsers = default_parser.add_subparsers(dest="parm_default_command", required=True)
+    default_set_parser = default_subparsers.add_parser("set", help="Set a parameter-template default.")
+    default_set_parser.add_argument("parm_path")
+    default_set_parser.add_argument("--target", choices=("instance", "definition"), default="instance")
+    default_source = default_set_parser.add_mutually_exclusive_group(required=True)
+    default_source.add_argument("--current", action="store_true", help="Use the current parameter value.")
+    default_source.add_argument("--value", help="JSON scalar or array.")
+    default_set_parser.set_defaults(handler=handle_default_set)
+
 
 def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parms_parser = node_subparsers.add_parser("parms", help="Discover parameters on one node.")
@@ -202,6 +253,290 @@ def handle_full_set(args: argparse.Namespace) -> dict:
         parm = _get_parm(session, args.parm_path)
         parm.setFromData(payload)
         return success_result({"parm_path": args.parm_path, "applied": True})
+
+
+def _expression_language(session: Any, name: str) -> Any:
+    return session.hou.exprLanguage.Python if name == "python" else session.hou.exprLanguage.Hscript
+
+
+def handle_expression_get(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        try:
+            expression = localize(parm.expression())
+            language = localize(parm.expressionLanguage().name()).lower()
+        except Exception:
+            expression = None
+            language = None
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "has_expression": expression is not None,
+                "expression": expression,
+                "language": language,
+            }
+        )
+
+
+def handle_expression_set(args: argparse.Namespace) -> dict:
+    if bool(args.text is not None) == bool(args.input is not None):
+        raise ValueError("Provide exactly one of --text or --input")
+    text = args.text if args.text is not None else _read_text_input(args.input)
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        parm.setExpression(text, _expression_language(session, args.language))
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "expression": text,
+                "language": args.language,
+                "applied": True,
+            }
+        )
+
+
+def handle_expression_clear(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        value = localize(parm.eval()) if args.keep_value else None
+        parm.deleteAllKeyframes()
+        if args.keep_value:
+            parm.set(value)
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "cleared": True,
+                "kept_value": value if args.keep_value else None,
+            }
+        )
+
+
+def _is_string_parm(session: Any, parm: Any) -> bool:
+    return parm.parmTemplate().type() == session.hou.parmTemplateType.String
+
+
+def handle_reference(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        target = _get_parm(session, args.target_parm)
+        source = _get_parm(session, args.source_parm)
+        function = "chs" if _is_string_parm(session, source) else "ch"
+        if args.absolute:
+            referenced_path = localize(source.path())
+        else:
+            node_path = localize(target.node().relativePathTo(source.node()))
+            referenced_path = f"{node_path}/{localize(source.name())}" if node_path != "." else localize(source.name())
+        expression = f'{function}("{referenced_path}")'
+        target.setExpression(expression, session.hou.exprLanguage.Hscript)
+        return success_result(
+            {
+                "target_parm": args.target_parm,
+                "source_parm": args.source_parm,
+                "relative": not args.absolute,
+                "expression": expression,
+                "applied": True,
+            }
+        )
+
+
+def _template_group_target(parm: Any, target: str) -> tuple[Any, Any, Any]:
+    node = parm.node()
+    if target == "definition":
+        definition = node.type().definition()
+        if definition is None:
+            raise ValueError(f"Node type has no HDA definition: {localize(node.path())}")
+        return node, definition, definition.parmTemplateGroup()
+    return node, node, node.parmTemplateGroup()
+
+
+def _template_summary(template: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "name": localize(template.name()),
+        "label": localize(template.label()),
+        "type": localize(template.type().name()),
+        "components": int(localize(template.numComponents())),
+        "help": localize(template.help()),
+        "tags": localize(template.tags()),
+        "join_with_next": bool(localize(template.joinWithNext())),
+        "hidden": bool(localize(template.isHidden())),
+        "label_hidden": bool(localize(template.isLabelHidden())),
+    }
+    for key, method in (
+        ("default", "defaultValue"),
+        ("min", "minValue"),
+        ("max", "maxValue"),
+        ("min_strict", "minIsStrict"),
+        ("max_strict", "maxIsStrict"),
+        ("menu_items", "menuItems"),
+        ("menu_labels", "menuLabels"),
+    ):
+        if hasattr(template, method):
+            result[key] = localize(getattr(template, method)())
+    if hasattr(template, "conditionals"):
+        result["conditionals"] = {
+            localize(key.name()): localize(value)
+            for key, value in template.conditionals().items()
+        }
+    return result
+
+
+def handle_template_get(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        _node, _owner, group = _template_group_target(parm, args.target)
+        template = group.find(localize(parm.tuple().name()))
+        if template is None:
+            raise ValueError(f"Parameter template not found: {args.parm_path}")
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "target": args.target,
+                "template": _template_summary(template),
+            }
+        )
+
+
+def _menu_template(session: Any, old: Any, payload: dict[str, Any]) -> Any:
+    items = tuple(payload["items"])
+    labels = tuple(payload.get("labels", items))
+    if len(items) != len(labels):
+        raise ValueError("Menu items and labels must have the same length")
+    current_default = old.defaultValue() if hasattr(old, "defaultValue") else 0
+    default = payload.get("default", current_default)
+    if isinstance(default, str) and default in items:
+        default = items.index(default)
+    template = session.hou.MenuParmTemplate(
+        old.name(),
+        payload.get("label", old.label()),
+        items,
+        labels,
+        default_value=int(default),
+    )
+    template.setHelp(payload.get("help", old.help()))
+    source_tags = payload.get("tags")
+    if source_tags is None:
+        source_tags = {
+            str(localize(key)): str(localize(value))
+            for key, value in old.tags().items()
+        }
+    if source_tags:
+        template.setTags(_remote_dict(session, source_tags))
+    template.setJoinWithNext(payload.get("join_with_next", old.joinWithNext()))
+    return template
+
+
+def _set_template_default(template: Any, value: Any) -> None:
+    components = int(template.numComponents())
+    if components > 1:
+        values = value if isinstance(value, (list, tuple)) else [value] * components
+        if len(values) != components:
+            raise ValueError(f"Default arity mismatch: expected {components}, got {len(values)}")
+        template.setDefaultValue(tuple(values))
+        return
+    type_name = localize(template.type().name())
+    if type_name in {"Menu", "Toggle", "Ramp", "Folder"}:
+        template.setDefaultValue(value)
+    else:
+        template.setDefaultValue((value,))
+
+
+def _apply_template_patch(session: Any, old: Any, payload: dict[str, Any]) -> Any:
+    requested_type = payload.get("type")
+    if requested_type == "menu":
+        return _menu_template(session, old, payload)
+    if requested_type and requested_type.lower() != localize(old.type().name()).lower():
+        raise ValueError("Only conversion to type 'menu' is currently supported")
+
+    template = old.clone()
+    if "label" in payload:
+        template.setLabel(payload["label"])
+    if "help" in payload:
+        template.setHelp(payload["help"])
+    if "tags" in payload:
+        template.setTags(_remote_dict(session, payload["tags"]))
+    if "join_with_next" in payload:
+        template.setJoinWithNext(bool(payload["join_with_next"]))
+    if "default" in payload:
+        _set_template_default(template, payload["default"])
+    for key, method in (
+        ("min", "setMinValue"),
+        ("max", "setMaxValue"),
+        ("min_strict", "setMinIsStrict"),
+        ("max_strict", "setMaxIsStrict"),
+    ):
+        if key in payload:
+            if not hasattr(template, method):
+                raise ValueError(f"Template does not support {key}")
+            getattr(template, method)(payload[key])
+    return template
+
+
+def _remote_dict(session: Any, values: dict[str, Any]) -> Any:
+    remote = session.connection.builtin.dict()
+    for key, value in values.items():
+        remote[str(key)] = str(value)
+    return remote
+
+
+def _apply_template_group(node: Any, owner: Any, group: Any, target: str) -> None:
+    owner.setParmTemplateGroup(group)
+    if target == "definition":
+        owner.save(owner.libraryFilePath())
+        node.matchCurrentDefinition()
+
+
+def handle_template_set(args: argparse.Namespace) -> dict:
+    payload = _read_json_input(args.input)
+    if not isinstance(payload, dict):
+        raise ValueError("Template patch must be a JSON object")
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        node, owner, group = _template_group_target(parm, args.target)
+        template_name = localize(parm.tuple().name())
+        old = group.find(template_name)
+        if old is None:
+            raise ValueError(f"Parameter template not found: {args.parm_path}")
+        group.replace(template_name, _apply_template_patch(session, old, payload))
+        _apply_template_group(node, owner, group, args.target)
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "target": args.target,
+                "template": _template_summary(group.find(template_name)),
+                "applied": True,
+            }
+        )
+
+
+def handle_default_set(args: argparse.Namespace) -> dict:
+    value = None
+    if not args.current:
+        import json
+
+        value = json.loads(args.value)
+    with connect(args.host, args.port) as session:
+        parm = _get_parm(session, args.parm_path)
+        if args.current:
+            members = list(parm.tuple())
+            value = [localize(item.eval()) for item in members]
+            if len(value) == 1:
+                value = value[0]
+        node, owner, group = _template_group_target(parm, args.target)
+        template_name = localize(parm.tuple().name())
+        template = group.find(template_name)
+        if template is None:
+            raise ValueError(f"Parameter template not found: {args.parm_path}")
+        updated = template.clone()
+        _set_template_default(updated, value)
+        group.replace(template_name, updated)
+        _apply_template_group(node, owner, group, args.target)
+        return success_result(
+            {
+                "parm_path": args.parm_path,
+                "target": args.target,
+                "default": value,
+                "applied": True,
+            }
+        )
 
 
 SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}

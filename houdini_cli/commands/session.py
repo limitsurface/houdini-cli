@@ -37,6 +37,24 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     session_ping_parser = session_subparsers.add_parser("ping", help="Verify Houdini connectivity.")
     session_ping_parser.set_defaults(handler=handle_ping)
 
+    save_parser = session_subparsers.add_parser(
+        "save",
+        help="Save the current Houdini scene to its existing path.",
+    )
+    save_parser.set_defaults(handler=handle_save)
+
+    save_as_parser = session_subparsers.add_parser(
+        "save-as",
+        help="Save the current Houdini scene to a new path.",
+    )
+    save_as_parser.add_argument("path", help="Destination .hip path. Houdini variables are expanded.")
+    save_as_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting an existing destination.",
+    )
+    save_as_parser.set_defaults(handler=handle_save_as)
+
     frame_parser = session_subparsers.add_parser(
         "frame",
         help="Get or set the current timeline frame.",
@@ -167,6 +185,35 @@ def handle_ping(args: argparse.Namespace) -> dict:
                 "hip_file": localize(session.hou.hipFile.path()),
             }
         )
+
+
+def _scene_save_result(session) -> dict:
+    return success_result(
+        {
+            "hip_file": localize(session.hou.hipFile.path()),
+            "modified": bool(localize(session.hou.hipFile.hasUnsavedChanges())),
+        }
+    )
+
+
+def handle_save(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        session.hou.hipFile.save()
+        return _scene_save_result(session)
+
+
+def handle_save_as(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        expanded = localize(session.hou.expandString(args.path))
+        destination = localize(session.connection.modules.os.path.abspath(expanded))
+        remote_os = session.connection.modules.os
+        if bool(localize(remote_os.path.exists(destination))) and not args.force:
+            raise ValueError(f"Destination already exists; use --force to overwrite: {destination}")
+        parent = localize(remote_os.path.dirname(destination))
+        if parent:
+            remote_os.makedirs(parent, exist_ok=True)
+        session.hou.hipFile.save(file_name=destination)
+        return _scene_save_result(session)
 
 
 def handle_frame(args: argparse.Namespace) -> dict:

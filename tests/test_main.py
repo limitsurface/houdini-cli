@@ -66,6 +66,23 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.parm_command == "full-set"
     assert args.input == "payload.json"
 
+    args = parser.parse_args(["parm", "expression", "set", "/obj/x/size", "--input", "-"])
+    assert args.parm_command == "expression"
+    assert args.parm_expression_command == "set"
+    assert args.input == "-"
+
+    args = parser.parse_args(["parm", "reference", "/obj/x/a", "/obj/x/b", "--absolute"])
+    assert args.parm_command == "reference"
+    assert args.absolute is True
+
+    args = parser.parse_args(["parm", "template", "set", "/obj/x/size", "--target", "definition", "--input", "-"])
+    assert args.parm_template_command == "set"
+    assert args.target == "definition"
+
+    args = parser.parse_args(["parm", "default", "set", "/obj/x/size", "--current"])
+    assert args.parm_default_command == "set"
+    assert args.current is True
+
     args = parser.parse_args(["shelf", "find", "--query", "pipe"])
     assert args.command == "shelf"
     assert args.shelf_command == "find"
@@ -88,10 +105,65 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.node_command == "neighbors"
     assert args.depth == 2
 
+    args = parser.parse_args(["node", "rename", "/obj/geo1/old", "new", "--unique"])
+    assert args.node_command == "rename"
+    assert args.unique is True
+
+    args = parser.parse_args(["node", "copy", "/obj/geo1/a", "/obj/geo1/b", "--parent", "/obj/geo2"])
+    assert args.node_command == "copy"
+    assert args.node_paths == ["/obj/geo1/a", "/obj/geo1/b"]
+
+    args = parser.parse_args(["node", "move", "/obj/geo1/a", "--parent", "/obj/geo2"])
+    assert args.node_command == "move"
+
+    args = parser.parse_args(["node", "get", "/obj/geo1", "--section", "references", "--external-only"])
+    assert args.section == "references"
+    assert args.external_only is True
+
+    args = parser.parse_args(["node", "flags", "set", "/obj/geo1/a", "--compress", "false"])
+    assert args.node_command == "flags"
+    assert args.node_flags_command == "set"
+    assert args.compress is False
+
+    args = parser.parse_args(["hda", "inspect", "/obj/geo1/asset1", "--parms"])
+    assert args.command == "hda"
+    assert args.hda_command == "inspect"
+    assert args.parms is True
+
+    args = parser.parse_args(
+        [
+            "hda",
+            "create",
+            "/obj/geo1/subnet1",
+            "--type-name",
+            "Scy::test::1.0",
+            "--label",
+            "Test",
+            "--library",
+            "test.hda",
+        ]
+    )
+    assert args.hda_command == "create"
+    assert args.on_existing == "error"
+
+    args = parser.parse_args(["hda", "section", "set", "/obj/geo1/asset1", "Help", "--input", "-"])
+    assert args.hda_section_command == "set"
+
+    args = parser.parse_args(["hda", "update", "/obj/geo1/asset1", "--all"])
+    assert args.all is True
+
     args = parser.parse_args(["session", "frame", "24"])
     assert args.command == "session"
     assert args.session_command == "frame"
     assert args.frame == 24
+
+    args = parser.parse_args(["session", "save"])
+    assert args.session_command == "save"
+
+    args = parser.parse_args(["session", "save-as", "D:/shots/test.hip", "--force"])
+    assert args.session_command == "save-as"
+    assert args.path == "D:/shots/test.hip"
+    assert args.force is True
 
     args = parser.parse_args(["session", "selection", "--include-hidden"])
     assert args.command == "session"

@@ -7,10 +7,11 @@ Agent-oriented CLI for controlling a live Houdini session over `hrpyc` / `rpyc`.
 The CLI is built for structured scene interaction from agents and scripts. Current command areas include:
 
 - connectivity checks: `ping`
-- session state, screenshots, viewport controls, and UI selection: `session`
+- session state, scene saving, screenshots, viewport controls, and UI selection: `session`
 - fallback execution: `eval`
-- parameters and compact node parm discovery: `parm`
-- node inspection, traversal, wiring, and navigation: `node`
+- parameters, expressions, references, defaults, and template editing: `parm`
+- node inspection, traversal, wiring, references, flags, copying, and reparenting: `node`
+- digital asset inspection, creation, packaging, editing, and validation: `hda`
 - shelf discovery and shelf tool CRUD: `shelf`
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
@@ -77,15 +78,47 @@ After `help_prepared/` exists, the raw copied `skills/houdini-cli/help/` folder 
 houdini-cli ping
 houdini-cli help
 houdini-cli session selection
+houdini-cli help hda
 ```
 
 ## Common Workflows
+
+Save the current scene or save it to a new path:
+
+```powershell
+houdini-cli session save
+houdini-cli session save-as "D:/projects/example/scenes/test.hip"
+houdini-cli session save-as "D:/projects/example/scenes/test.hip" --force
+```
+
+`session save-as` expands Houdini variables, creates missing parent directories,
+and refuses to overwrite an existing file unless `--force` is supplied.
 
 Inspect explicit node wiring:
 
 ```powershell
 houdini-cli node connections /obj/geo1/null1
 houdini-cli node get /obj/geo1/null1 --section inputs
+houdini-cli node get /obj/geo1/null1 --section references --external-only
+```
+
+Rename, copy, or reparent nodes:
+
+```powershell
+houdini-cli node rename /obj/geo1/box1 source_box
+houdini-cli node copy /obj/geo1/box1 /obj/geo1/xform1 --parent /obj/geo2
+houdini-cli node move /obj/geo1/box1 --parent /obj/geo2
+houdini-cli node flags get /obj/geo2/box1
+houdini-cli node flags set /obj/geo2/box1 --display true --render true
+```
+
+Read or edit parameter expressions and references:
+
+```powershell
+houdini-cli parm expression get /obj/geo1/box1/sizex
+houdini-cli parm expression set /obj/geo1/box1/sizex --text 'ch("../sizey")'
+houdini-cli parm reference /obj/geo1/box1/sizex /obj/geo1/box1/sizey
+houdini-cli parm template get /obj/geo1/box1/sizex
 ```
 
 After editing an OpenCL kernel:
@@ -117,6 +150,35 @@ Read the current Houdini node selection:
 ```powershell
 houdini-cli session selection
 ```
+
+Inspect or validate an HDA:
+
+```powershell
+houdini-cli hda inspect /obj/geo1/my_asset --parms --sections --tools
+houdini-cli hda validate /obj/geo1/my_asset --fresh-instance --cook --strict
+houdini-cli hda section list /obj/geo1/my_asset
+houdini-cli hda tool inspect /obj/geo1/my_asset
+```
+
+Package an existing plain subnet as an HDA:
+
+```powershell
+houdini-cli hda package /obj/geo1/my_subnet `
+  --type-name Scy::my_asset::1.0 `
+  --label "My Asset" `
+  --library "C:/Users/Scy/Documents/houdini21.0/otls/my_asset.hda" `
+  --min-inputs 1 `
+  --max-inputs 1 `
+  --tab-submenu "ScyTools/SOPs/" `
+  --expanded-preview `
+  --create-dirs
+```
+
+`hda package` currently packages an existing plain subnet. It applies the
+requested definition metadata, can generate COP or SOP Tab-menu tools, and
+validates a freshly instantiated asset by default. Use `houdini-cli help hda`
+and `houdini-cli help hda <command>` for the complete lifecycle, interface,
+section, script, and tool command surfaces.
 
 Sample cooked COP output:
 

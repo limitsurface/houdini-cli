@@ -9,7 +9,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "node", "nodetype", "opencl", "parm", "ping", "session", "shelf"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "session", "shelf"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
@@ -33,7 +33,19 @@ def test_handle_help_group_lists_subcommands() -> None:
     result = help_command.handle_help(Namespace(command_path=["parm"]))
 
     assert result["ok"] is True
-    assert result["data"]["subcommands"] == ["full", "full-set", "get", "menu", "set", "text-set", "tuple-set"]
+    assert result["data"]["subcommands"] == [
+        "default",
+        "expression",
+        "full",
+        "full-set",
+        "get",
+        "menu",
+        "reference",
+        "set",
+        "template",
+        "text-set",
+        "tuple-set",
+    ]
     assert "OpenCL" in result["data"]["notes"][0]
     assert "set" in result["data"]["subcommand_descriptions"]
 
@@ -46,6 +58,10 @@ def test_handle_help_node_group_lists_updated_subcommands() -> None:
     assert "find" in result["data"]["subcommands"]
     assert "neighbors" in result["data"]["subcommands"]
     assert "parms" in result["data"]["subcommands"]
+    assert "copy" in result["data"]["subcommands"]
+    assert "move" in result["data"]["subcommands"]
+    assert "rename" in result["data"]["subcommands"]
+    assert "flags" in result["data"]["subcommands"]
     assert "compact row format" in result["data"]["subcommand_descriptions"]["find"]
 
 
@@ -84,6 +100,21 @@ def test_handle_help_parm_set_topic() -> None:
     assert result["data"]["usage"] == "houdini-cli parm set <parm-path> <value>"
 
 
+def test_handle_help_parm_template_set_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["parm", "template", "set"]))
+
+    assert result["ok"] is True
+    assert "--target instance|definition" in result["data"]["usage"]
+    assert "named menu" in result["data"]["notes"][0]
+
+
+def test_handle_help_parm_reference_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["parm", "reference"]))
+
+    assert result["ok"] is True
+    assert "chs()" in result["data"]["notes"][0]
+
+
 def test_handle_help_node_set_mentions_batching() -> None:
     result = help_command.handle_help(Namespace(command_path=["node", "set"]))
 
@@ -97,6 +128,14 @@ def test_handle_help_session_frame_topic() -> None:
     assert result["ok"] is True
     assert result["data"]["path"] == ["session", "frame"]
     assert result["data"]["usage"] == "houdini-cli session frame [<frame>]"
+
+
+def test_handle_help_session_save_as_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["session", "save-as"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli session save-as <path> [--force]"
+    assert "existing destinations require --force" in result["data"]["notes"]
 
 
 def test_handle_help_session_selection_topic() -> None:
@@ -170,6 +209,20 @@ def test_handle_help_node_set_topic_includes_input_examples() -> None:
     assert any("from_index" in example and "to_index" in example for example in result["data"]["examples"])
 
 
+def test_handle_help_node_move_clarifies_reparenting() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "move"]))
+
+    assert result["ok"] is True
+    assert "reparents nodes" in result["data"]["notes"][1]
+
+
+def test_handle_help_node_flags_set_mentions_compress() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "flags", "set"]))
+
+    assert result["ok"] is True
+    assert "--compress BOOL" in result["data"]["usage"]
+
+
 def test_handle_help_opencl_topic_includes_discovery_context() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl"]))
 
@@ -214,3 +267,20 @@ def test_handle_help_cop_info_topic_has_usage() -> None:
 def test_handle_help_missing_topic_raises() -> None:
     with pytest.raises(ValueError, match="Help topic not found"):
         help_command.handle_help(Namespace(command_path=["missing"]))
+
+
+def test_handle_help_hda_group_lists_nested_groups() -> None:
+    result = help_command.handle_help(Namespace(command_path=["hda"]))
+
+    assert result["ok"] is True
+    assert "inspect" in result["data"]["subcommands"]
+    assert "parms" in result["data"]["subcommands"]
+    assert "section" in result["data"]["subcommands"]
+    assert "tool" in result["data"]["subcommands"]
+
+
+def test_handle_help_hda_update_documents_order() -> None:
+    result = help_command.handle_help(Namespace(command_path=["hda", "update"]))
+
+    assert result["ok"] is True
+    assert "contents -> interface" in result["data"]["notes"][0]

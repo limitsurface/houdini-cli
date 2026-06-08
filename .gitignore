@@ -1,5 +1,7 @@
 docs/
+build/
 dist/
+live_query_dumps/
 .venv/
 __pycache__/
 *.pyc
