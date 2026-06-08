@@ -11,6 +11,23 @@ from .hda_common import definition_for_node, parm_tree, save_definition
 from .node_common import get_node
 from .parm import _read_json_input
 
+_FOLDER_TYPES = {
+    "tabs": "Tabs",
+    "simple": "Simple",
+    "collapsible": "Collapsible",
+    "radio": "RadioButtons",
+}
+_RAMP_BASES = {
+    "linear": "Linear",
+    "constant": "Constant",
+    "catmull_rom": "CatmullRom",
+    "monotone_cubic": "MonotoneCubic",
+    "bezier": "Bezier",
+    "bspline": "BSpline",
+    "hermite": "Hermite",
+}
+_COLOR_TYPES = {"rgb": "RGB", "hsv": "HSV", "hsl": "HSL", "lab": "LAB", "xyz": "XYZ"}
+
 
 def handle_parms_inspect(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
@@ -23,27 +40,114 @@ def handle_parms_inspect(args: argparse.Namespace) -> dict:
         )
 
 
+def _callback_language(session: Any, name: str) -> Any:
+    if name == "python":
+        return session.hou.scriptLanguage.Python
+    if name == "hscript":
+        return session.hou.scriptLanguage.Hscript
+    raise ValueError(f"Unsupported callback language: {name}")
+
+
+def _apply_common_options(session: Any, template: Any, spec: dict[str, Any]) -> Any:
+    callback = spec.get("callback")
+    if callback is not None:
+        template.setScriptCallback(callback)
+        template.setScriptCallbackLanguage(
+            _callback_language(session, spec.get("callback_language", "python"))
+        )
+    if "help" in spec:
+        template.setHelp(spec["help"])
+    if "hidden" in spec:
+        template.hide(bool(spec["hidden"]))
+    if "join_with_next" in spec:
+        template.setJoinWithNext(bool(spec["join_with_next"]))
+    return template
+
+
+def _ramp_template(session: Any, spec: dict[str, Any], name: str, label: str) -> Any:
+    kind = spec["type"]
+    ramp_type = (
+        session.hou.rampParmType.Color
+        if kind == "color_ramp"
+        else session.hou.rampParmType.Float
+    )
+    basis_name = spec.get("basis", "linear")
+    if basis_name not in _RAMP_BASES:
+        raise ValueError(f"Unsupported ramp basis: {basis_name}")
+    basis = getattr(session.hou.rampBasis, _RAMP_BASES[basis_name])
+    kwargs = {
+        "default_value": int(spec.get("keys", 2)),
+        "default_basis": basis,
+        "show_controls": bool(spec.get("show_controls", True)),
+    }
+    if kind == "color_ramp":
+        color_name = spec.get("color_space", "rgb")
+        if color_name not in _COLOR_TYPES:
+            raise ValueError(f"Unsupported ramp color space: {color_name}")
+        kwargs["color_type"] = getattr(session.hou.colorType, _COLOR_TYPES[color_name])
+    return session.hou.RampParmTemplate(name, label, ramp_type, **kwargs)
+
+
 def _template_from_spec(session: Any, spec: dict[str, Any]) -> Any:
     kind = spec["type"]
     name = spec["name"]
     label = spec.get("label", name)
     default = spec.get("default")
     if kind == "float":
-        return session.hou.FloatParmTemplate(
+        template = session.hou.FloatParmTemplate(
             name, label, 1, default_value=(float(default or 0.0),)
         )
-    if kind == "int":
-        return session.hou.IntParmTemplate(name, label, 1, default_value=(int(default or 0),))
-    if kind == "toggle":
-        return session.hou.ToggleParmTemplate(name, label, bool(default))
-    if kind == "string":
-        return session.hou.StringParmTemplate(name, label, 1, default_value=(default or "",))
-    if kind == "menu":
+    elif kind == "int":
+        template = session.hou.IntParmTemplate(
+            name, label, 1, default_value=(int(default or 0),)
+        )
+    elif kind == "toggle":
+        template = session.hou.ToggleParmTemplate(name, label, bool(default))
+    elif kind == "string":
+        template = session.hou.StringParmTemplate(
+            name, label, 1, default_value=(default or "",)
+        )
+    elif kind == "menu":
         items = tuple(spec["items"])
         labels = tuple(spec.get("labels", items))
         value = default if isinstance(default, int) else items.index(default) if default in items else 0
-        return session.hou.MenuParmTemplate(name, label, items, labels, default_value=value)
-    raise ValueError(f"Unsupported parameter type: {kind}")
+        template = session.hou.MenuParmTemplate(
+            name, label, items, labels, default_value=value
+        )
+    elif kind in {"float_ramp", "color_ramp"}:
+        template = _ramp_template(session, spec, name, label)
+    else:
+        raise ValueError(f"Unsupported parameter type: {kind}")
+    return _apply_common_options(session, template, spec)
+
+
+def _folder_from_spec(session: Any, spec: dict[str, Any]) -> Any:
+    folder_type_name = spec.get("folder_type", "tabs")
+    if folder_type_name not in _FOLDER_TYPES:
+        raise ValueError(f"Unsupported folder type: {folder_type_name}")
+    folder = session.hou.FolderParmTemplate(
+        spec["name"],
+        spec.get("label", spec["name"]),
+        folder_type=getattr(session.hou.folderType, _FOLDER_TYPES[folder_type_name]),
+    )
+    for item in spec.get("items", spec.get("parms", [])):
+        folder.addParmTemplate(_layout_template_from_spec(session, item))
+    return folder
+
+
+def _layout_template_from_spec(session: Any, spec: dict[str, Any]) -> Any:
+    kind = spec["type"]
+    if kind == "folder":
+        return _folder_from_spec(session, spec)
+    if kind == "heading":
+        return session.hou.LabelParmTemplate(
+            spec["name"],
+            spec.get("label", spec["name"]),
+            is_label_hidden=bool(spec.get("hide_label", False)),
+        )
+    if kind == "separator":
+        return session.hou.SeparatorParmTemplate(spec["name"])
+    return _template_from_spec(session, spec)
 
 
 def handle_parms_apply(args: argparse.Namespace) -> dict:
@@ -57,12 +161,10 @@ def handle_parms_apply(args: argparse.Namespace) -> dict:
             else definition.parmTemplateGroup()
         )
         for folder_spec in payload.get("folders", []):
-            folder = session.hou.FolderParmTemplate(
-                folder_spec["name"], folder_spec.get("label", folder_spec["name"])
-            )
-            for spec in folder_spec.get("parms", []):
-                folder.addParmTemplate(_template_from_spec(session, spec))
-            group.append(folder)
+            normalized = {"type": "folder", **folder_spec}
+            group.append(_folder_from_spec(session, normalized))
+        for item in payload.get("items", []):
+            group.append(_layout_template_from_spec(session, item))
         definition.setParmTemplateGroup(group)
         library = save_definition(definition)
         node.matchCurrentDefinition()
@@ -156,4 +258,3 @@ def handle_parms_defaults(args: argparse.Namespace) -> dict:
                 "library": library,
             }
         )
-

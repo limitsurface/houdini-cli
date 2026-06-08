@@ -501,7 +501,15 @@ HELP_TREE = {
                 "description": "Inspect, apply, promote, and synchronize HDA parameters.",
                 "children": {
                     "inspect": {"description": "Inspect the published HDA parameter hierarchy.", "usage": "houdini-cli hda parms inspect <asset-node>"},
-                    "apply": {"description": "Apply a declarative HDA parameter interface.", "usage": "houdini-cli hda parms apply <asset-node> --input <path-or-'-'> [--replace-all]"},
+                    "apply": {
+                        "description": "Apply a declarative HDA parameter interface.",
+                        "usage": "houdini-cli hda parms apply <asset-node> --input <path-or-'-'> [--replace-all]",
+                        "notes": [
+                            "supports nested tabs, simple/collapsible folders, headings, and separators",
+                            "value parameters may define callback and callback_language (python or hscript)",
+                            "supports float_ramp and color_ramp parameters",
+                        ],
+                    },
                     "promote": {"description": "Promote an internal parameter onto the HDA interface.", "usage": "houdini-cli hda parms promote <asset-node> <internal-parm> --name NAME [options]"},
                     "defaults": {"description": "Synchronize HDA defaults from current values.", "usage": "houdini-cli hda parms defaults <asset-node> --from-current"},
                 },
