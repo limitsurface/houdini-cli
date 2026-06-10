@@ -466,6 +466,66 @@ def _apply_template_group(node: Any, owner: Any, group: Any, target: str) -> Non
         node.matchCurrentDefinition()
 
 
+def _set_definition_default_in_houdini(
+    session: Any, parm_path: str, value: Any
+) -> dict[str, Any]:
+    """Keep HOM template objects inside Houdini's main thread.
+
+    Passing hou.ParmTemplateGroup and hou.ParmTemplate netrefs back and forth
+    through RPyC can corrupt _hou reference counts and crash Houdini.
+    """
+    source = """
+import hdefereval
+import hou
+
+def _houdini_cli_set_definition_default(parm_path, value):
+    def apply():
+        parm = hou.parm(parm_path)
+        if parm is None:
+            raise ValueError("Parameter not found: " + parm_path)
+        node = parm.node()
+        definition = node.type().definition()
+        if definition is None:
+            raise ValueError("Node type has no HDA definition: " + node.path())
+        template_name = parm.tuple().name()
+        group = definition.parmTemplateGroup()
+        template = group.find(template_name)
+        if template is None:
+            raise ValueError("Parameter template not found: " + parm_path)
+        updated = template.clone()
+        components = updated.numComponents()
+        if components > 1:
+            values = value if isinstance(value, (list, tuple)) else [value] * components
+            if len(values) != components:
+                raise ValueError(
+                    "Default arity mismatch: expected {}, got {}".format(
+                        components, len(values)
+                    )
+                )
+            updated.setDefaultValue(tuple(values))
+        elif updated.type().name() in {"Menu", "Toggle", "Ramp", "Folder"}:
+            updated.setDefaultValue(value)
+        else:
+            updated.setDefaultValue((value,))
+        group.replace(template_name, updated)
+        definition.setParmTemplateGroup(group)
+        library = definition.libraryFilePath()
+        definition.save(library)
+        node.matchCurrentDefinition()
+        return {
+            "template_name": template_name,
+            "default": updated.defaultValue(),
+            "library": library,
+        }
+    return hdefereval.executeInMainThreadWithResult(apply)
+"""
+    session.connection.execute(source)
+    remote_result = session.connection.eval(
+        f"_houdini_cli_set_definition_default({parm_path!r}, {value!r})"
+    )
+    return localize(remote_result)
+
+
 def handle_template_set(args: argparse.Namespace) -> dict:
     payload = read_json_input(args.input)
     if not isinstance(payload, dict):
@@ -496,6 +556,19 @@ def handle_default_set(args: argparse.Namespace) -> dict:
 
         value = json.loads(args.value)
     with connect(args.host, args.port) as session:
+        if args.target == "definition" and not args.current:
+            result = _set_definition_default_in_houdini(
+                session, args.parm_path, value
+            )
+            return success_result(
+                {
+                    "parm_path": args.parm_path,
+                    "target": args.target,
+                    "default": result["default"],
+                    "library": result["library"],
+                    "applied": True,
+                }
+            )
         parm = _get_parm(session, args.parm_path)
         if args.current:
             members = list(parm.tuple())

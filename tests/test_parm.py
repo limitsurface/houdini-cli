@@ -119,6 +119,23 @@ class FakeSession:
         return self._node
 
 
+class FakeConnection:
+    def __init__(self):
+        self.executed = None
+        self.evaluated = None
+
+    def execute(self, source):
+        self.executed = source
+
+    def eval(self, expression):
+        self.evaluated = expression
+        return {
+            "template_name": "processing_scale",
+            "default": (0.75,),
+            "library": "test.hda",
+        }
+
+
 class FakeConnect:
     def __init__(self, fake_session: FakeSession) -> None:
         self.fake_session = fake_session
@@ -219,6 +236,29 @@ def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
     assert result["ok"] is True
     assert fake_parm.last_scalar_payload == 4.5
     assert fake_parm.last_value_payload is None
+
+
+def test_definition_default_executes_entire_edit_inside_houdini(monkeypatch) -> None:
+    session = FakeSession(None)
+    session.connection = FakeConnection()
+    monkeypatch.setattr(parm, "connect", FakeConnect(session))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_default_set(
+        Namespace(
+            host="localhost",
+            port=18811,
+            parm_path="/obj/copnet1/ntsc_vhs1/processing_scale",
+            target="definition",
+            current=False,
+            value="0.75",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["default"] == (0.75,)
+    assert "executeInMainThreadWithResult" in session.connection.executed
+    assert "processing_scale" in session.connection.evaluated
 
 
 def test_handle_text_set(monkeypatch) -> None:
