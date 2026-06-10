@@ -12,3 +12,5 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 - When command shape or flags are unclear, call `houdini-cli help` or `houdini-cli help <command-path>`.
 - Use the CLI help as the source of truth for command details.
 - Use fast text search against `skills/houdini-cli/help_prepared/` for local Houdini doc lookup, preferring `rg` when available. If help isn't prepared, remind user to consult installation instruction in repo README.
+- COPs has been superseded by Copernicus. Legacy COP nodes are not compatible with the Copernicus context. Never use the legacy COP context unless the user explicitly requires it.
+- Before any COP or Copernicus-related work, read `skills/houdini-cli/copernicus/copernicus.md`.

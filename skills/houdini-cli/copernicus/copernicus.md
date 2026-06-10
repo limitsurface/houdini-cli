@@ -1,0 +1,199 @@
+---
+name: houdini-copernicus-opencl
+description: Specialized guidance for Houdini Copernicus and OpenCL kernel development, including verified coordinate-space rules, bindings, sampling, reusable patterns, and live CLI inspection.
+---
+
+# Houdini Copernicus and OpenCL
+
+Use this guidance when developing GPU-accelerated Copernicus filters, procedural textures, deformations, or solvers.
+
+## Core Mandates
+
+1. **Read and apply the coordinate rules below every time.** Coordinate-space mistakes can produce plausible but fundamentally incorrect results.
+2. **Inspect native kernels.** Use [kernel_reference_index.md](kernel_reference_index.md) to find relevant nodes, create them in Houdini, locate their internal OpenCL nodes, and read `kernelcode`.
+3. **Prefer OpenCL for complex per-pixel work.** Keeping Copernicus processing on the GPU avoids unnecessary transfers.
+4. **Use `#bind` and `@KERNEL`.** Do not manually author the generated kernel signature.
+5. **After editing a kernel, run `houdini-cli opencl sync <node-path>`**, then validate and check node errors before judging the output.
+
+## Critical: Spaces and Coordinates
+
+**This section is mandatory context for every Copernicus OpenCL task. Do not write sampling, warping, shape, grid, or pixel code from memory without applying these rules.**
+
+### Image Space
+
+`@P` is centered, aspect-aware image space:
+
+- `(0, 0)` is the image center.
+- Image-space units are square when pixel aspect ratio is `1`.
+- The longest image dimension spans approximately `-1` to `1`.
+- The shorter dimension has a proportionally smaller range.
+
+At `640x360`, pixel centers span approximately:
+
+```text
+X: -0.9984 to 0.9984
+Y: -0.5609 to 0.5609
+```
+
+Do **not** multiply `@P.x` by `@xres / @yres` for aspect correction. `@P` is already aspect-aware; `length(@P)` produces a circle on a non-square image.
+
+### Sampling and Bindings
+
+Use a normal layer binding for IMX accessors:
+
+```c
+#bind layer src
+#bind layer !&dst
+
+@KERNEL
+{
+    float4 color = @src.imageSample(@P);
+    @dst.set(color);
+}
+```
+
+`@src` is shorthand for `@src.imageSample(@P)`.
+
+The `!` modifier requests a raw OpenCL image binding. `#bind layer !src` does **not** expose IMX methods such as `.imageSample()`, `.bufferIndex()`, or coordinate transforms.
+
+Coordinate-specific accessors:
+
+| Coordinates | Access |
+| :--- | :--- |
+| Image space | `@src.imageSample(float2)` or `@src` at `@P` |
+| Texture space | `@src.textureSample(float2)` |
+| Floating-point buffer space | `@src.bufferSample(float2)` |
+| Integer buffer space | `@src.bufferIndex(int2)` |
+
+Do not assume `@P * 0.5f + 0.5f` converts image space to texture space on non-square images. Use transforms:
+
+```c
+float2 uv = @src.bufferToTexture(@src.imageToBuffer(@P));
+```
+
+### Discrete Pixel Math
+
+`@ixy` is an `int2` from `(0, 0)` to `@res - 1`. Use it for grids, blocks, pixelation, and exact pixel access:
+
+```c
+int2 snappedIxy = (@ixy / @pixel_size) * @pixel_size;
+int2 sampleIxy = snappedIxy + (int2)(@pixel_size / 2);
+sampleIxy = clamp(sampleIxy, (int2)(0, 0), @res - 1);
+float4 color = @src.bufferIndex(sampleIxy);
+```
+
+Integer pixel math produces square pixel blocks regardless of image dimensions. Center sampling avoids boundary ambiguity; clamping prevents invalid indexed access.
+
+## Binding Symbols
+
+| Symbol | Meaning | Example |
+| :--- | :--- | :--- |
+| None | IMX layer binding with sampling, indexing, metadata, and transforms | `#bind layer src` |
+| `!` | Raw OpenCL image binding | `#bind layer !src` |
+| `&` | Writable binding | `#bind layer &dst` |
+| `?` | Optional binding; test with `#if @name.bound` | `#bind layer mask?` |
+| `!&` | Writable raw image, commonly used for aligned output | `#bind layer !&dst` |
+
+## Common Patterns
+
+### Neighborhood Sampling
+
+Use a normal layer binding and integer indices for convolution, morphology, or local statistics:
+
+```c
+#bind layer src
+#bind layer !&dst
+
+@KERNEL
+{
+    float4 sum = 0.0f;
+    for (int y = -1; y <= 1; y++)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            sum += @src.bufferIndex(@ixy + (int2)(x, y));
+        }
+    }
+    @dst.set(sum / 9.0f);
+}
+```
+
+Border behavior follows the source layer's border mode. Explicitly clamp when the algorithm must not wrap, mirror, or use a constant border.
+
+### Optional Layer Override
+
+```c
+#if @strength.bound
+    float strength = @strength;
+#else
+    float strength = 1.0f;
+#endif
+```
+
+### Geometry Attributes
+
+```c
+#bind point points name=P float3 port=geo
+```
+
+Use `@points.len` for the element count and `@points(i)` for indexed access. Avoid naming an attribute binding `P` when the global `@P` binding is active; use an alias such as `geoP`.
+
+### Rank Selection
+
+For small parallel sorts:
+
+1. Identify the sortable span.
+2. For each element, count elements with a lower sort key.
+3. Use that rank as the destination index.
+4. Write with `@name.setIndex(int2, value)`.
+
+## OpenCL Language Gotchas
+
+- `fract(x)` does not compile because OpenCL requires a second pointer argument. Use `x - floor(x)` when only the fractional part is needed.
+- `abs()` is for integers. Use `fabs()` for floating-point scalars and vectors.
+- Unsuffixed literals can compile with an explicit target type, but `f` suffixes remain a clear portable convention.
+- `bufferIndex()` and `setIndex()` require `int2`; never pass `@P`.
+- `sincos(angle, &cos_value)` can replace separate `sin` and `cos` calls.
+- `select(a, b, condition)` can avoid simple divergent branches.
+
+## Installed Headers
+
+Inspect Houdini's installed OpenCL headers when built-in behavior is unclear:
+
+- `houdini_install_path\houdini\ocl\include\imx.h`
+- `houdini_install_path\houdini\ocl\include\imx_internal.h`
+- `houdini_install_path\houdini\ocl\include\imx_filter.h`
+- `houdini_install_path\houdini\ocl\include\imx_filter_internal.h`
+
+Common imported headers include `postprocessing.h`, `mtlx_noise.h`, and `random.h`.
+
+## Live Inspection
+
+Find and inspect a native kernel:
+
+```text
+houdini-cli node find <node-path> --type opencl --max-depth 5
+houdini-cli parm get <opencl-node-path>/kernelcode
+```
+
+After editing:
+
+```text
+houdini-cli opencl sync <node-path> --clear
+houdini-cli opencl validate <node-path>
+houdini-cli node errors <node-path>
+```
+
+For visual confirmation, set the display flag and capture the viewport:
+
+```text
+houdini-cli node flags set <node-path> --display true
+houdini-cli session screenshot --index 0 --output <path.png>
+```
+
+## References
+
+- [Kernel Reference Index](kernel_reference_index.md)
+- [OpenCL for VEX Users](../help_prepared/vex/ocl.txt)
+- [OpenCL COP](../help_prepared/nodes/cop/opencl.txt)
+- [Copernicus Introduction](../help_prepared/copernicus/intro.txt)
