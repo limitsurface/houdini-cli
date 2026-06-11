@@ -19,6 +19,7 @@ from .commands import opencl
 from .commands import parm
 from .commands import shelf
 from .commands import session
+from .commands import wrangle
 from .format.envelopes import error_result
 from .runtime.logging import configure_logging
 
@@ -49,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     opencl.register_parser(subparsers)
     attrib.register_parser(subparsers)
     nodetype.register_parser(subparsers)
+    wrangle.register_parser(subparsers)
 
     return parser
 

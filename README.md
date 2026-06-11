@@ -16,6 +16,7 @@ The CLI is built for structured scene interaction from agents and scripts. Curre
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
 - OpenCL binding/signature validation and sync: `opencl`
+- Attribute Wrangle creation and spare-parameter synchronization: `wrangle`
 - node type discovery: `nodetype`
 - built-in structured help: `help`
 
@@ -201,6 +202,27 @@ Sample cooked COP output:
 ```powershell
 houdini-cli cop sample /obj/fixes_here/copnet1/opencl1 --x 128 --y 128
 ```
+
+Create an Attribute Wrangle and generate spare parameters from its VEX:
+
+```powershell
+houdini-cli wrangle create /obj/work_here `
+  --name grid_points `
+  --run-over detail `
+  --input grid.vfl `
+  --create-spare-parms
+```
+
+Synchronize channel-call parameters on an existing wrangle:
+
+```powershell
+houdini-cli wrangle spare-parms sync /obj/work_here/grid_points
+houdini-cli wrangle spare-parms sync /obj/work_here/grid_points --clear
+```
+
+Without `--clear`, compatible existing spare parameters are preserved. With
+`--clear`, all spare parameters are deleted before Houdini recreates parameters
+from the snippet's channel calls.
 
 Search shelf tools and edit a shelf script:
 

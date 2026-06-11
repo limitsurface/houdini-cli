@@ -9,7 +9,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "session", "shelf"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "session", "shelf", "wrangle"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]

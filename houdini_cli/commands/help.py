@@ -89,6 +89,32 @@ HELP_TREE = {
         "usage": "houdini-cli ping",
         "examples": ["uv run houdini-cli ping"],
     },
+    "wrangle": {
+        "description": "Create Attribute Wrangles and synchronize spare parameters from VEX channel calls.",
+        "notes": [
+            "Spare parameter creation delegates to Houdini's native VEX expression helper.",
+            "wrangle spare-parms sync preserves compatible existing spare parameters unless --clear is used.",
+        ],
+        "children": {
+            "create": {
+                "description": "Create and configure an Attribute Wrangle SOP.",
+                "usage": "houdini-cli wrangle create <parent-path> [--name NAME] [--group GROUP] [--group-type TYPE] [--run-over CLASS] [--vex CODE | --input PATH] [--create-spare-parms]",
+            },
+            "spare-parms": {
+                "description": "Synchronize or clear wrangle spare parameters.",
+                "children": {
+                    "sync": {
+                        "description": "Create spare parameters from channel calls in the VEX snippet.",
+                        "usage": "houdini-cli wrangle spare-parms sync <node-path> [--clear]",
+                    },
+                    "clear": {
+                        "description": "Delete all spare parameters from a wrangle.",
+                        "usage": "houdini-cli wrangle spare-parms clear <node-path>",
+                    },
+                },
+            },
+        },
+    },
     "session": {
         "description": "Inspect or control session-level state such as connectivity, frame, viewport screenshots, and viewport camera state.",
         "children": {

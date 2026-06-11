@@ -46,6 +46,29 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "opencl"
     assert args.opencl_command == "validate"
 
+    args = parser.parse_args(
+        [
+            "wrangle",
+            "create",
+            "/obj/geo1",
+            "--name",
+            "grid",
+            "--run-over",
+            "detail",
+            "--vex",
+            'float scale = chf("scale");',
+            "--create-spare-parms",
+        ]
+    )
+    assert args.command == "wrangle"
+    assert args.wrangle_command == "create"
+    assert args.run_over == "detail"
+    assert args.create_spare_parms is True
+
+    args = parser.parse_args(["wrangle", "spare-parms", "sync", "/obj/geo1/grid", "--clear"])
+    assert args.wrangle_spare_parms_command == "sync"
+    assert args.clear is True
+
     args = parser.parse_args(["parm", "full", "/obj/geo1/box1/sizex"])
     assert args.command == "parm"
     assert args.parm_command == "full"
