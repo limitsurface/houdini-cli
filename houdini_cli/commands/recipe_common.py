@@ -8,6 +8,12 @@ from typing import Any
 from ..transport.rpyc import localize
 
 TOOL_RECIPE_CATEGORIES = {"tool_recipe", "tab_tool_recipe"}
+RECIPE_CATEGORY_ALIASES = {
+    "tool": TOOL_RECIPE_CATEGORIES,
+    "decoration": {"decoration_recipe"},
+    "node-preset": {"node_preset_recipe"},
+    "parm-preset": {"parm_preset_recipe"},
+}
 
 
 def _recipe_payload(node_type: Any) -> dict[str, Any] | None:
@@ -52,6 +58,50 @@ def tool_recipe_items(session: Any, category_name: str) -> list[dict[str, Any]]:
         )
     items.sort(key=lambda item: (item["description"].lower(), item["key"].lower()))
     return items
+
+
+def recipe_items(session: Any, *, category: str | None = None, visible_only: bool = False) -> list[dict[str, Any]]:
+    accepted = RECIPE_CATEGORY_ALIASES.get(category) if category else None
+    items = []
+    for key, node_type in session.hou.dataNodeTypeCategory().nodeTypes().items():
+        payload = _recipe_payload(node_type)
+        if payload is None:
+            continue
+        definition = node_type.definition()
+        properties = payload.get("properties", {})
+        recipe_category = str(properties.get("recipe_category", ""))
+        if accepted is not None and recipe_category not in accepted:
+            continue
+        visible = bool(properties.get("visible", True))
+        if visible_only and not visible:
+            continue
+        tool = payload.get("tool", {})
+        items.append(
+            {
+                "key": str(key),
+                "label": str(node_type.description()),
+                "category": next(
+                    (alias for alias, values in RECIPE_CATEGORY_ALIASES.items() if recipe_category in values),
+                    recipe_category,
+                ),
+                "recipe_category": recipe_category,
+                "visible": visible,
+                "library": localize(definition.libraryFilePath()) if definition else None,
+                "network_categories": [str(value) for value in tool.get("network_categories", [])],
+                "submenus": [str(value) for value in tool.get("tab_submenus", [])],
+            }
+        )
+    items.sort(key=lambda item: (item["label"].lower(), item["key"].lower()))
+    return items
+
+
+def get_recipe_item(session: Any, recipe_key: str) -> dict[str, Any]:
+    item = next((row for row in recipe_items(session) if row["key"] == recipe_key), None)
+    if item is None:
+        raise ValueError(f"Recipe not found: {recipe_key}")
+    node_type = session.hou.dataNodeTypeCategory().nodeTypes()[recipe_key]
+    payload = _recipe_payload(node_type) or {}
+    return {**item, "payload": payload}
 
 
 def find_tool_recipe(session: Any, recipe_key: str, category_name: str) -> dict[str, Any] | None:

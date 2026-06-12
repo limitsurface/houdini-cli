@@ -211,6 +211,31 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.r == [10.0, 20.0, 30.0]
 
 
+def test_build_parser_accepts_recipe_commands() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "recipe", "create", "tool", "acme::pair",
+            "--anchor", "/obj/geo1/box1",
+            "--items", "/obj/geo1/box1", "/obj/geo1/xform1",
+            "--label", "Pair",
+            "--library", "D:/recipes.hda",
+        ]
+    )
+    assert args.recipe_key == "acme::pair"
+    assert args.items == ["/obj/geo1/box1", "/obj/geo1/xform1"]
+
+    args = parser.parse_args(
+        [
+            "recipe", "apply", "parm-preset", "acme::size",
+            "--parm", "/obj/geo1/box1/size",
+            "--multiparm-operation", "append",
+        ]
+    )
+    assert args.recipe_key == "acme::size"
+    assert args.multiparm_operation == "append"
+
+
 def test_main_returns_zero_for_success(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         "houdini_cli.commands.session.handle_ping",

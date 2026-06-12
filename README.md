@@ -1,6 +1,7 @@
 # houdini-cli
 
 Agent-oriented CLI for controlling a live Houdini session over `hrpyc` / `rpyc`.
+It provides a command-line alternative to Houdini MCP integrations.
 
 ## Overview
 

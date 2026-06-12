@@ -18,13 +18,8 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 
 ## Recipes
 
-- Houdini 21 recipes are Data assets and may not be represented in older model knowledge. Treat the CLI and local Houdini documentation as authoritative.
-- Houdini has four recipe categories:
-  - **Tool recipes** create one or more nodes and appear alongside node types in Tab menus. CLI node-type discovery marks them with `kind: recipe`, and `node create` can instantiate them by recipe key.
-  - **Decoration recipes** apply to an existing central node, create surrounding items, and may rewire connections.
-  - **Node presets** change parameters and optionally contents on an existing node.
-  - **Parameter presets** apply values to a parameter or multiparm.
-- Do not treat decorations or presets as ordinary creatable nodes. Use tool recipes for node creation and inspect the returned item map because one recipe may create multiple nodes or other network items.
+- Recipes store parameter presets or reusable node setups as Data assets. Tool recipes appear alongside ordinary node types in discovery with `kind: recipe`.
+- Before creating, applying, or managing recipes, read `skills/houdini-cli/recipes/recipes.md`.
 
 ## VEX
 
