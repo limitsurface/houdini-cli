@@ -59,26 +59,30 @@ Create a Houdini shelf tool and paste in the Python from [shelf_script/start_hrp
 
 ## Local Houdini Docs
 
-The repo-local Houdini product docs are required for agents to verify Houdini
-APIs and node behavior instead of guessing. The agent installing the CLI should
-complete this setup:
+The bundled skill and local Houdini product docs are required for agents to use
+the CLI and verify Houdini APIs and node behavior. The agent installing the CLI
+should complete this setup:
 
-1. Check whether `skills/houdini-cli/help_prepared/` already exists.
-2. If it does not, ask the user to copy their local Houdini help folder into
-   `skills/houdini-cli/help/`. The source usually matches an install path like
-   `..\Houdini xx.x.xx\houdini\help`.
-3. After the user confirms the copy is complete, run:
+1. Copy `skills/houdini-cli/` into the skill directory used by the agent
+   harness. Use its harness-specific location when one exists; otherwise install
+   it as `~/.agents/skills/houdini-cli/`.
+2. In the installed skill, check whether `help_prepared/` already exists.
+3. If it does not, ask the user to copy their local Houdini help folder into the
+   installed skill's `help/` directory. The source usually matches an install
+   path like `..\Houdini xx.x.xx\houdini\help`.
+4. After the user confirms the copy is complete, run:
 
 ```powershell
-python skills/houdini-cli/scripts/prepare_houdini_help.py
+python <installed-skill-path>/scripts/prepare_houdini_help.py
 ```
 
 This builds a filtered searchable text corpus in
-`skills/houdini-cli/help_prepared/` without modifying the copied help source.
-Verify that the prepared directory was created before treating installation as
-complete.
+`<installed-skill-path>/help_prepared/` without modifying the copied help
+source. Verify that the installed skill and prepared directory exist before
+treating installation as complete.
 
-After `help_prepared/` exists, the raw copied `skills/houdini-cli/help/` folder is no longer needed.
+After `help_prepared/` exists, the raw copied `<installed-skill-path>/help/`
+folder is no longer needed.
 
 ## Quick Check
 
