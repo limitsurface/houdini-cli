@@ -28,6 +28,7 @@ class FakeNodeType:
         self._min_inputs = min_inputs
         self._max_inputs = max_inputs
         self._is_generator = is_generator
+        self._definition = None
 
     def name(self):
         return self._name
@@ -56,6 +57,9 @@ class FakeNodeType:
     def isGenerator(self):
         return self._is_generator
 
+    def definition(self):
+        return self._definition
+
 
 class FakeCategory:
     def __init__(self, name, node_types) -> None:
@@ -79,7 +83,7 @@ class FakeHou:
     def sopNodeTypeCategory(self):
         return self._categories["sop"]
 
-    def cop2NodeTypeCategory(self):
+    def copNodeTypeCategory(self):
         return self._categories["cop"]
 
     def vopNodeTypeCategory(self):
@@ -96,6 +100,9 @@ class FakeHou:
 
     def shopNodeTypeCategory(self):
         return self._categories["shop"]
+
+    def dataNodeTypeCategory(self):
+        return self._categories.get("data", FakeCategory("Data", {}))
 
 
 class FakeSession:
@@ -157,7 +164,11 @@ def test_handle_list(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["data"]["category"] == "sop"
     assert result["data"]["count"] == 2
-    assert result["data"]["items"][0] == {"key": "attribwrangle", "description": "Attribute Wrangle"}
+    assert result["data"]["items"][0] == {
+        "key": "attribwrangle",
+        "description": "Attribute Wrangle",
+        "kind": "node",
+    }
     assert result["meta"] == {
         "truncated": True,
         "limit": 2,
@@ -187,7 +198,9 @@ def test_handle_find_prefix(monkeypatch) -> None:
     )
 
     assert result["ok"] is True
-    assert result["data"]["items"] == [{"key": "attribwrangle", "description": "Attribute Wrangle"}]
+    assert result["data"]["items"] == [
+        {"key": "attribwrangle", "description": "Attribute Wrangle", "kind": "node"}
+    ]
 
 
 def test_handle_find_requires_filter(monkeypatch) -> None:
@@ -232,13 +245,14 @@ def test_handle_get(monkeypatch) -> None:
         "min_num_inputs": 0,
         "max_num_inputs": 4,
         "is_generator": False,
+        "kind": "node",
     }
 
 
 def test_handle_get_missing_type(monkeypatch) -> None:
     monkeypatch.setattr(nodetype, "connect", FakeConnect(FakeSession(FakeHou(_fake_categories()))))
 
-    with pytest.raises(ValueError, match="Node type not found"):
+    with pytest.raises(ValueError, match="Node type or tool recipe not found"):
         nodetype.handle_get(Namespace(host="localhost", port=18811, category="sop", type_key="missing"))
 
 

@@ -51,6 +51,9 @@ class FakeNode:
     def children(self):
         return self._children
 
+    def childTypeCategory(self):
+        return FakeNodeTypeCategory()
+
     def allSubChildren(self):
         return self._children
 
@@ -146,6 +149,7 @@ class FakeSession:
         self._pane_tabs = pane_tabs or []
         self.ui = self
         self.nodeFlag = type("NodeFlag", (), {"Compress": object()})
+        self.data = type("Data", (), {})()
 
     def node(self, path):
         return self.nodes.get(path)
@@ -155,6 +159,9 @@ class FakeSession:
 
     def paneTabs(self):
         return self._pane_tabs
+
+    def dataNodeTypeCategory(self):
+        return type("DataCategory", (), {"nodeTypes": lambda self: {}})()
 
     def moveNodesTo(self, nodes, destination):
         return destination.moved_nodes

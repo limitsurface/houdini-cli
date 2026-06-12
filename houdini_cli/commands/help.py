@@ -351,8 +351,9 @@ HELP_TREE = {
         ],
         "children": {
             "create": {
-                "description": "Create a new node under a parent network.",
-                "usage": "houdini-cli node create <parent-path> <node-type> [--name <node-name>]",
+                "description": "Create a node or tool recipe under a parent network.",
+                "usage": "houdini-cli node create <parent-path> <node-or-recipe-key> [--name <node-name>]",
+                "notes": ["tool recipes may create multiple nodes; --name applies only to ordinary nodes"],
             },
             "rename": {
                 "description": "Rename one node and return its old and new paths.",
@@ -632,7 +633,10 @@ HELP_TREE = {
         }
     },
     "nodetype": {
-        "description": "Discover available node types by category, query, or prefix.",
+        "description": "Discover creatable node types and tool recipes by category, query, or prefix.",
+        "notes": [
+            "results use kind=node or kind=recipe; only tool recipes appear because decorations and presets apply to existing targets",
+        ],
         "children": {
             "list": {
                 "description": "List node types for a category.",

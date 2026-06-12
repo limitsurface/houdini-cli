@@ -11,6 +11,7 @@ from ..util.jsonio import load_json_input
 from . import parm
 from . import query
 from .node_common import get_node, node_summary
+from .recipe_common import apply_tool_recipe, find_tool_recipe
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -128,8 +129,13 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 def handle_create(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         parent = get_node(session, args.parent_path)
+        recipe = find_tool_recipe(session, args.node_type, str(parent.childTypeCategory().name()))
+        if recipe is not None:
+            if args.name:
+                raise ValueError("--name is not supported when creating a tool recipe")
+            return success_result(apply_tool_recipe(session, parent, args.node_type))
         created = parent.createNode(args.node_type, args.name) if args.name else parent.createNode(args.node_type)
-        return success_result(node_summary(created))
+        return success_result({**node_summary(created), "kind": "node"})
 
 
 def _parse_bool(value: str) -> bool:

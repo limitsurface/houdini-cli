@@ -7,6 +7,7 @@ from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect
+from .recipe_common import tool_recipe_items
 
 DEFAULT_LIMIT = 50
 VALID_CATEGORIES = ("obj", "sop", "cop", "vop", "rop", "lop", "dop", "shop")
@@ -48,7 +49,7 @@ def _get_category(session: Any, category_key: str) -> Any:
     mapping = {
         "obj": session.hou.objNodeTypeCategory,
         "sop": session.hou.sopNodeTypeCategory,
-        "cop": session.hou.cop2NodeTypeCategory,
+        "cop": session.hou.copNodeTypeCategory,
         "vop": session.hou.vopNodeTypeCategory,
         "rop": session.hou.ropNodeTypeCategory,
         "lop": session.hou.lopNodeTypeCategory,
@@ -68,6 +69,7 @@ def _compact_item(key: str, node_type: Any) -> dict:
     return {
         "key": key,
         "description": str(node_type.description()),
+        "kind": "node",
     }
 
 
@@ -84,7 +86,20 @@ def _full_item(category_key: str, node_type: Any) -> dict:
         "min_num_inputs": int(node_type.minNumInputs()),
         "max_num_inputs": int(node_type.maxNumInputs()),
         "is_generator": bool(node_type.isGenerator()),
+        "kind": "node",
     }
+
+
+def _category_name(category: Any) -> str:
+    return str(category.name())
+
+
+def _discovery_items(session: Any, category_key: str) -> list[dict[str, Any]]:
+    category = _get_category(session, category_key)
+    items = [_compact_item(key, node_type) for key, node_type in _node_type_items(category)]
+    items.extend(tool_recipe_items(session, _category_name(category)))
+    items.sort(key=lambda item: (item["description"].lower(), item["key"].lower()))
+    return items
 
 
 def _validate_limit(limit: int) -> None:
@@ -92,7 +107,7 @@ def _validate_limit(limit: int) -> None:
         raise ValueError(f"Limit must be positive: {limit}")
 
 
-def _filter_items(items: list[tuple[str, Any]], query: str | None, prefix: str | None) -> list[tuple[str, Any]]:
+def _filter_items(items: list[dict[str, Any]], query: str | None, prefix: str | None) -> list[dict[str, Any]]:
     query_text = query.strip().lower() if query else None
     prefix_text = prefix.strip().lower() if prefix else None
 
@@ -100,18 +115,19 @@ def _filter_items(items: list[tuple[str, Any]], query: str | None, prefix: str |
         raise ValueError("nodetype find requires --query and/or --prefix")
 
     filtered = []
-    for key, node_type in items:
+    for item in items:
+        key = item["key"]
         key_lower = key.lower()
-        description_lower = str(node_type.description()).lower()
+        description_lower = item["description"].lower()
         if query_text and query_text not in key_lower and query_text not in description_lower:
             continue
         if prefix_text and not key_lower.startswith(prefix_text):
             continue
-        filtered.append((key, node_type))
+        filtered.append(item)
     return filtered
 
 
-def _list_result(category_key: str, matched_items: list[tuple[str, Any]], limit: int) -> dict:
+def _list_result(category_key: str, matched_items: list[dict[str, Any]], limit: int) -> dict:
     _validate_limit(limit)
     total_matches = len(matched_items)
     sliced = matched_items[:limit]
@@ -119,7 +135,7 @@ def _list_result(category_key: str, matched_items: list[tuple[str, Any]], limit:
         {
             "category": category_key,
             "count": len(sliced),
-            "items": [_compact_item(key, node_type) for key, node_type in sliced],
+            "items": sliced,
         },
         meta={
             "truncated": total_matches > limit,
@@ -132,15 +148,13 @@ def _list_result(category_key: str, matched_items: list[tuple[str, Any]], limit:
 
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        category = _get_category(session, args.category)
-        items = _node_type_items(category)
+        items = _discovery_items(session, args.category)
         return _list_result(args.category, items, args.limit)
 
 
 def handle_find(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        category = _get_category(session, args.category)
-        items = _node_type_items(category)
+        items = _discovery_items(session, args.category)
         filtered = _filter_items(items, args.query, args.prefix)
         return _list_result(args.category, filtered, args.limit)
 
@@ -149,6 +163,12 @@ def handle_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         category = _get_category(session, args.category)
         node_type = category.nodeTypes().get(args.type_key)
-        if node_type is None:
-            raise ValueError(f"Node type not found: category={args.category} key={args.type_key}")
-        return success_result(_full_item(args.category, node_type))
+        if node_type is not None:
+            return success_result(_full_item(args.category, node_type))
+        recipe = next(
+            (item for item in tool_recipe_items(session, _category_name(category)) if item["key"] == args.type_key),
+            None,
+        )
+        if recipe is not None:
+            return success_result({**recipe, "category": args.category})
+        raise ValueError(f"Node type or tool recipe not found: category={args.category} key={args.type_key}")
