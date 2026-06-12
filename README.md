@@ -58,18 +58,24 @@ Create a Houdini shelf tool and paste in the Python from [shelf_script/start_hrp
 
 ## Local Houdini Docs
 
-If you want repo-local Houdini product docs for raw `rg` lookup:
+The repo-local Houdini product docs are required for agents to verify Houdini
+APIs and node behavior instead of guessing. The agent installing the CLI should
+complete this setup:
 
 1. Check whether `skills/houdini-cli/help_prepared/` already exists.
-2. If it does not, copy your local Houdini help folder into `skills/houdini-cli/help/`.
-   The source usually matches an install path like `..\Houdini xx.x.xx\houdini\help`.
-3. Run:
+2. If it does not, ask the user to copy their local Houdini help folder into
+   `skills/houdini-cli/help/`. The source usually matches an install path like
+   `..\Houdini xx.x.xx\houdini\help`.
+3. After the user confirms the copy is complete, run:
 
 ```powershell
 python skills/houdini-cli/scripts/prepare_houdini_help.py
 ```
 
-This builds a filtered searchable text corpus in `skills/houdini-cli/help_prepared/` without modifying the copied help source.
+This builds a filtered searchable text corpus in
+`skills/houdini-cli/help_prepared/` without modifying the copied help source.
+Verify that the prepared directory was created before treating installation as
+complete.
 
 After `help_prepared/` exists, the raw copied `skills/houdini-cli/help/` folder is no longer needed.
 

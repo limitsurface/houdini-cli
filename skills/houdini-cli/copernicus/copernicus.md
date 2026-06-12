@@ -94,6 +94,42 @@ Integer pixel math produces square pixel blocks regardless of image dimensions. 
 | `?` | Optional binding; test with `#if @name.bound` | `#bind layer mask?` |
 | `!&` | Writable raw image, commonly used for aligned output | `#bind layer !&dst` |
 
+## Simulations and Blocks
+
+Copernicus simulations use a Block Begin and Block End pair to feed the block's
+outputs back into its inputs on the next timeline step.
+
+For a typical user-authored simulation:
+
+1. Create the **Block** recipe, which places a Block Begin and Block End and
+   sets the Begin node's **Block Path** to the End node.
+2. Turn on **Simulate** on the Block End.
+3. Add matching inputs and outputs to the Block Begin and Block End. Match each
+   port's order, name, and data type.
+4. Wire initial data into the Block Begin inputs.
+5. Wire processing nodes from the Block Begin outputs to the corresponding
+   Block End inputs. These nodes define one simulation step.
+6. Advance or play the timeline to evaluate successive feedback steps.
+
+Block ports carry typed COP data such as Mono, UV, RGB, RGBA, geometry, VDBs,
+or cables. They are not scalar control parameters. Multiple independent state
+layers can be fed back through separate matching ports.
+
+Keep operations that do not depend on previous simulation results outside the
+block when possible. Bring external data into the block only when it must be
+sampled during each step; return only state that must feed back.
+
+Do not enable **Live Simulation** unless the user explicitly requests it. Live
+Simulation runs independently of the timeline, is non-deterministic, and does
+not use normal timeline caching.
+
+Flow, Reaction-Diffusion, and Pyro Block recipes are specialized,
+preconfigured solvers built on the same block mechanism. Their visible Begin
+and End nodes are HDAs that contain much of the solver logic internally, so
+they may be wired directly together rather than exposing a typical
+user-authored processing network between them. Inspect their internal networks
+and dedicated documentation before modifying their solver structure.
+
 ## Common Patterns
 
 ### Neighborhood Sampling
