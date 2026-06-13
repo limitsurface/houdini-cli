@@ -117,6 +117,71 @@ class FakeOpenclNode:
         return None
 
 
+class FakeCategory:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def name(self):
+        return self._name
+
+
+class FakeNodeType:
+    def __init__(self, category: str) -> None:
+        self._category = FakeCategory(category)
+
+    def category(self):
+        return self._category
+
+
+class FakeSopOpenclNode(FakeOpenclNode):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parms.pop("inputs")
+        self._parms.pop("outputs")
+        self._parms["runover"] = FakeParm("attribute")
+
+    def path(self):
+        return "/obj/geo1/opencl1"
+
+    def type(self):
+        return FakeNodeType("Sop")
+
+    def parm(self, name):
+        parm = super().parm(name)
+        if parm is None and name.startswith("bindings") and "_portname" not in name and "_layerborder" not in name:
+            parm = FakeParm("")
+            self._parms[name] = parm
+        return parm
+
+
+class FakeDopOpenclNode(FakeOpenclNode):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parms.pop("inputs")
+        self._parms.pop("outputs")
+        self._parms.pop("bindings")
+        self._parms["runover"] = FakeParm("allfields")
+        self._parms["paramcount"] = FakeParm(0)
+
+    def path(self):
+        return "/obj/dopnet1/gasopencl1"
+
+    def type(self):
+        return FakeNodeType("Dop")
+
+    def setParms(self, payload):
+        self.set_parms_calls.append(payload)
+        for key, value in payload.items():
+            self._parms.setdefault(key, FakeParm(value)).value = value
+
+    def parm(self, name):
+        parm = super().parm(name)
+        if parm is None and name.startswith("parameter"):
+            parm = FakeParm("")
+            self._parms[name] = parm
+        return parm
+
+
 class FakeSourceNode:
     def __init__(self, path: str, output_types: list[str]) -> None:
         self._path = path
@@ -292,6 +357,14 @@ def _binding(**kwargs):
         "timescale": "none",
         "layertype": "floatn",
         "layerborder": "input",
+        "fieldname": "",
+        "fieldoffsets": True,
+        "geometry": "Geometry",
+        "dataname": "",
+        "optionname": "",
+        "optiontype": "float",
+        "optionsize": 1,
+        "rampsize": 1024,
         "attribute": "",
         "attribclass": "detail",
         "attribtype": "float",
@@ -383,6 +456,110 @@ def test_handle_sync_bindings_only_leaves_signature_untouched(monkeypatch) -> No
     assert result["data"]["spare_parms"] == ["gain"]
     assert result["data"]["inputs"] == [{"name": "src", "type": "floatn", "optional": True}]
     assert result["data"]["outputs"] == [{"name": "dst", "type": "floatn"}]
+
+
+def test_handle_sync_sop_rebuilds_all_binding_rows_without_signature(monkeypatch) -> None:
+    bindings = [
+        _binding(
+            name="P",
+            type="attribute",
+            portname="",
+            attribute="P",
+            attribclass="point",
+            attribsize=3,
+            writeable=True,
+        ),
+        _binding(name="gain", type="float", portname="gain", fval=2.0, defval=True),
+    ]
+    node_obj = FakeSopOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings, runover="attribute")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/opencl1",
+            clear=True,
+            bindings_only=False,
+            disconnect_invalid=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["context"] == "sop"
+    assert result["data"]["inputs"] == []
+    assert result["data"]["outputs"] == []
+    assert result["data"]["spare_parms"] == ["gain"]
+    assert not any("inputs" in payload or "outputs" in payload for payload in node_obj.set_parms_calls)
+    assert any(payload == {"bindings": 2} for payload in node_obj.set_parms_calls)
+    row_payload = next(payload for payload in node_obj.set_parms_calls if payload.get("bindings1_name") == "P")
+    assert row_payload["bindings1_type"] == "attribute"
+    assert row_payload["bindings2_name"] == "gain"
+    assert result["data"]["validation"]["bindings_match_kernel"] is True
+    assert result["data"]["validation"]["signature_matches_kernel"] is None
+
+
+def test_handle_sync_dop_rebuilds_gas_opencl_parameters(monkeypatch) -> None:
+    bindings = [
+        _binding(
+            name="density",
+            type="scalarfield",
+            fieldname="density",
+            fieldoffsets=True,
+            readable=True,
+            writeable=True,
+        ),
+        _binding(
+            name="geoP",
+            type="attribute",
+            geometry="Geometry",
+            attribute="P",
+            attribclass="point",
+            attribsize=3,
+        ),
+        _binding(
+            name="scale",
+            type="option",
+            dataname="Controls",
+            optionname="scale",
+            optiontype="float",
+            optionsize=1,
+        ),
+        _binding(name="gain", type="float", fval=0.5, defval=True),
+    ]
+    node_obj = FakeDopOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings, runover="allfields")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/dopnet1/gasopencl1",
+            clear=True,
+            bindings_only=False,
+            disconnect_invalid=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["context"] == "dop"
+    assert result["data"]["spare_parms"] == ["gain"]
+    assert not any("inputs" in payload or "outputs" in payload or "bindings" in payload for payload in node_obj.set_parms_calls)
+    assert any(payload == {"paramcount": 4} for payload in node_obj.set_parms_calls)
+    row_payload = next(payload for payload in node_obj.set_parms_calls if payload.get("parameter1Name") == "density")
+    assert row_payload["parameter1Type"] == "scalarfield"
+    assert row_payload["parameter1Field"] == "density"
+    assert row_payload["parameter1Output"] is True
+    assert row_payload["parameter2Geometry"] == "Geometry"
+    assert row_payload["parameter2Attribute"] == "P"
+    assert row_payload["parameter3DataName"] == "Controls"
+    assert row_payload["parameter3OptionName"] == "scale"
+    assert row_payload["parameter4Flt"] == 0.5
+    assert node_obj.parm("parameter4Flt").last_expression == 'ch("./gain")'
+    assert result["data"]["validation"]["bindings_match_kernel"] is True
+    assert result["data"]["validation"]["signature_matches_kernel"] is None
 
 
 def test_handle_sync_groups_ports_and_preserves_metadata(monkeypatch) -> None:

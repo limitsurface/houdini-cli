@@ -18,6 +18,7 @@ _VDB_SIGNATURE_TYPES = {
 }
 
 _SPARE_PARM_BINDING_TYPES = {"int", "float", "float2", "float3", "float4"}
+_DOP_SPARE_PARM_BINDING_TYPES = {"int", "float", "float3", "float4"}
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -26,14 +27,14 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 
     validate_parser = opencl_subparsers.add_parser(
         "validate",
-        help="Validate an OpenCL node's current signature and wired input types against its kernel.",
+        help="Validate OpenCL COP signatures, SOP bindings, or DOP parameters against a kernel.",
     )
     validate_parser.add_argument("node_path", help="OpenCL node path.")
     validate_parser.set_defaults(handler=handle_validate)
 
     sync_parser = opencl_subparsers.add_parser(
         "sync",
-        help="Rebuild OpenCL signature and bindings from #bind directives.",
+        help="Synchronize OpenCL COP, SOP, or DOP interfaces from #bind directives.",
     )
     sync_parser.add_argument("node_path", help="OpenCL node path.")
     sync_parser.add_argument(
@@ -44,7 +45,7 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     sync_parser.add_argument(
         "--bindings-only",
         action="store_true",
-        help="Update binding rows and generated spare parms without changing visible inputs/outputs.",
+        help="For COPs, avoid changing visible inputs/outputs; SOPs and DOPs always sync their binding rows.",
     )
     sync_parser.add_argument(
         "--disconnect-invalid",
@@ -56,6 +57,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 
 def _binding_scalar(binding: Any, key: str) -> Any:
     return localize(binding[key])
+
+
+def _binding_vector(binding: Any, key: str, size: int) -> list[float]:
+    value = binding[key]
+    return [float(value[index]) for index in range(size)]
 
 
 def _signature_type(binding_type: str, binding: Any, *, output: bool) -> str:
@@ -107,11 +113,11 @@ def _binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
     elif binding_type == "float":
         values[f"{prefix}fval"] = float(_binding_scalar(binding, "fval"))
     elif binding_type == "float2":
-        values[f"{prefix}v2val"] = list(localize(binding["v2val"]))
+        values[f"{prefix}v2val"] = _binding_vector(binding, "v2val", 2)
     elif binding_type == "float3":
-        values[f"{prefix}v3val"] = list(localize(binding["v3val"]))
+        values[f"{prefix}v3val"] = _binding_vector(binding, "v3val", 3)
     elif binding_type == "float4":
-        values[f"{prefix}v4val"] = list(localize(binding["v4val"]))
+        values[f"{prefix}v4val"] = _binding_vector(binding, "v4val", 4)
 
     return values
 
@@ -149,21 +155,21 @@ def _spare_parm_template(session: Any, binding: Any) -> Any:
             name,
             label,
             2,
-            default_value=tuple(float(value) for value in localize(binding["v2val"])),
+            default_value=tuple(_binding_vector(binding, "v2val", 2)),
         )
     if binding_type == "float3":
         return session.hou.FloatParmTemplate(
             name,
             label,
             3,
-            default_value=tuple(float(value) for value in localize(binding["v3val"])),
+            default_value=tuple(_binding_vector(binding, "v3val", 3)),
         )
     if binding_type == "float4":
         return session.hou.FloatParmTemplate(
             name,
             label,
             4,
-            default_value=tuple(float(value) for value in localize(binding["v4val"])),
+            default_value=tuple(_binding_vector(binding, "v4val", 4)),
         )
     raise ValueError(f"Unsupported spare parm binding type: {binding_type}")
 
@@ -239,6 +245,29 @@ def _binding_row_values(bindings: list[Any]) -> dict[str, Any]:
     for index, binding in enumerate(bindings, start=1):
         parm_values.update(_binding_parm_values(index, binding))
     return parm_values
+
+
+def _node_category(opencl_node: Any) -> str:
+    try:
+        return str(localize(opencl_node.type().category().name()))
+    except Exception:
+        return ""
+
+
+def _is_sop_opencl(opencl_node: Any) -> bool:
+    return _node_category(opencl_node).lower() == "sop"
+
+
+def _is_dop_opencl(opencl_node: Any) -> bool:
+    return _node_category(opencl_node).lower() == "dop"
+
+
+def _opencl_context(opencl_node: Any) -> str:
+    if _is_sop_opencl(opencl_node):
+        return "sop"
+    if _is_dop_opencl(opencl_node):
+        return "dop"
+    return "cop"
 
 
 def _set_binding_value_expression(opencl_node: Any, parm_name: str, expression: str) -> None:
@@ -532,6 +561,155 @@ def _binding_row_hints(opencl_node: Any) -> list[str]:
     return hints
 
 
+def _binding_row_summary(opencl_node: Any) -> list[dict[str, Any]]:
+    bindings_parm = opencl_node.parm("bindings")
+    if bindings_parm is None:
+        return []
+    try:
+        binding_count = int(bindings_parm.eval())
+    except Exception:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for index in range(1, binding_count + 1):
+        name_parm = opencl_node.parm(f"bindings{index}_name")
+        type_parm = opencl_node.parm(f"bindings{index}_type")
+        if name_parm is None or type_parm is None:
+            continue
+        try:
+            rows.append(
+                {
+                    "name": str(name_parm.evalAsString()),
+                    "type": str(type_parm.evalAsString()),
+                }
+            )
+        except Exception:
+            continue
+    return rows
+
+
+def _desired_binding_row_summary(bindings: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": str(_binding_scalar(binding, "name")),
+            "type": str(_binding_scalar(binding, "type")),
+        }
+        for binding in bindings
+    ]
+
+
+def _dop_binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
+    prefix = f"parameter{index}"
+    binding_type = str(_binding_scalar(binding, "type"))
+    values: dict[str, Any] = {
+        f"{prefix}Name": str(_binding_scalar(binding, "name")),
+        f"{prefix}Type": binding_type,
+        f"{prefix}Precision": str(_binding_scalar(binding, "precision")),
+        f"{prefix}Input": bool(_binding_scalar(binding, "readable")),
+        f"{prefix}Output": bool(_binding_scalar(binding, "writeable")),
+        f"{prefix}Optional": bool(_binding_scalar(binding, "optional")),
+        f"{prefix}DefVal": bool(_binding_scalar(binding, "defval")),
+        f"{prefix}TimeScale": str(_binding_scalar(binding, "timescale")),
+    }
+
+    if binding_type in {"scalarfield", "vectorfield", "matrixfield"}:
+        values[f"{prefix}Field"] = str(_binding_scalar(binding, "fieldname"))
+        values[f"{prefix}Offsets"] = bool(_binding_scalar(binding, "fieldoffsets"))
+    elif binding_type == "attribute":
+        values[f"{prefix}Geometry"] = str(_binding_scalar(binding, "geometry"))
+        values[f"{prefix}Attribute"] = str(_binding_scalar(binding, "attribute"))
+        values[f"{prefix}Class"] = str(_binding_scalar(binding, "attribclass"))
+        values[f"{prefix}AttributeType"] = str(_binding_scalar(binding, "attribtype"))
+        values[f"{prefix}AttributeSize"] = int(_binding_scalar(binding, "attribsize"))
+    elif binding_type == "volume":
+        values[f"{prefix}Geometry"] = str(_binding_scalar(binding, "geometry"))
+        values[f"{prefix}Volume"] = str(_binding_scalar(binding, "volume"))
+        values[f"{prefix}Resolution"] = bool(_binding_scalar(binding, "resolution"))
+        values[f"{prefix}VoxelSize"] = bool(_binding_scalar(binding, "voxelsize"))
+        values[f"{prefix}XformToWorld"] = bool(_binding_scalar(binding, "xformtoworld"))
+        values[f"{prefix}XformToVoxel"] = bool(_binding_scalar(binding, "xformtovoxel"))
+    elif binding_type == "vdb":
+        values[f"{prefix}Geometry"] = str(_binding_scalar(binding, "geometry"))
+        values[f"{prefix}Volume"] = str(_binding_scalar(binding, "volume"))
+        values[f"{prefix}VDBType"] = str(_binding_scalar(binding, "vdbtype"))
+    elif binding_type == "option":
+        values[f"{prefix}DataName"] = str(_binding_scalar(binding, "dataname"))
+        values[f"{prefix}OptionName"] = str(_binding_scalar(binding, "optionname"))
+        values[f"{prefix}OptionType"] = str(_binding_scalar(binding, "optiontype"))
+        values[f"{prefix}OptionSize"] = int(_binding_scalar(binding, "optionsize"))
+    elif binding_type == "ramp":
+        values[f"{prefix}RampSize"] = int(_binding_scalar(binding, "rampsize"))
+    elif binding_type == "int":
+        values[f"{prefix}Int"] = int(_binding_scalar(binding, "intval"))
+    elif binding_type == "float":
+        values[f"{prefix}Flt"] = float(_binding_scalar(binding, "fval"))
+    elif binding_type == "float3":
+        values[f"{prefix}Flt3"] = _binding_vector(binding, "v3val", 3)
+    elif binding_type == "float4":
+        values[f"{prefix}Flt4"] = _binding_vector(binding, "v4val", 4)
+    else:
+        raise ValueError(f"Unsupported Gas OpenCL binding type: {binding_type}")
+
+    return values
+
+
+def _dop_binding_row_summary(opencl_node: Any) -> list[dict[str, Any]]:
+    count_parm = opencl_node.parm("paramcount")
+    if count_parm is None:
+        return []
+    try:
+        count = int(count_parm.eval())
+    except Exception:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for index in range(1, count + 1):
+        name_parm = opencl_node.parm(f"parameter{index}Name")
+        type_parm = opencl_node.parm(f"parameter{index}Type")
+        if name_parm is None or type_parm is None:
+            continue
+        rows.append(
+            {
+                "name": str(name_parm.evalAsString()),
+                "type": str(type_parm.evalAsString()),
+            }
+        )
+    return rows
+
+
+def _link_dop_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
+    suffixes = {
+        "int": ["Int"],
+        "float": ["Flt"],
+        "float3": ["Flt31", "Flt32", "Flt33"],
+        "float4": ["Flt41", "Flt42", "Flt43", "Flt44"],
+    }
+    for index, binding in enumerate(bindings, start=1):
+        binding_type = str(_binding_scalar(binding, "type"))
+        spare_name = _spare_parm_name(binding)
+        for component, suffix in enumerate(suffixes.get(binding_type, []), start=1):
+            target = f"parameter{index}{suffix}"
+            source = spare_name if len(suffixes[binding_type]) == 1 else f"{spare_name}{component}"
+            _set_binding_value_expression(opencl_node, target, f'ch("./{source}")')
+
+
+def _sync_dop_bindings(opencl_node: Any, bindings: list[Any]) -> None:
+    opencl_node.setParms({"paramcount": 0})
+    if not bindings:
+        return
+    opencl_node.setParms({"paramcount": len(bindings)})
+    parm_values: dict[str, Any] = {}
+    for index, binding in enumerate(bindings, start=1):
+        parm_values.update(_dop_binding_parm_values(index, binding))
+    parm_values = {
+        name: value
+        for name, value in parm_values.items()
+        if opencl_node.parm(name) is not None
+    }
+    opencl_node.setParms(parm_values)
+    _link_dop_binding_value_parms(opencl_node, bindings)
+
+
 def _disconnect_input(opencl_node: Any, index: int) -> None:
     try:
         opencl_node.setInput(index, None)
@@ -558,6 +736,72 @@ def _validation_summary(
     runover: str,
 ) -> dict[str, Any]:
     _safe_cook(opencl_node)
+    if _is_dop_opencl(opencl_node):
+        desired_rows = _desired_binding_row_summary(bindings)
+        current_rows = _dop_binding_row_summary(opencl_node)
+        bindings_match_kernel = current_rows == desired_rows
+        messages = _node_messages(opencl_node)
+        hints: list[str] = []
+        if not bindings_match_kernel:
+            hints.append(
+                f"Gas OpenCL parameter rows differ from kernel #bind directives. "
+                f"Try: houdini-cli opencl sync {localize(opencl_node.path())}"
+            )
+        return {
+            "node_path": localize(opencl_node.path()),
+            "context": "dop",
+            "runover": runover,
+            "binding_count": len(bindings),
+            "bindings_match_kernel": bindings_match_kernel,
+            "signature_matches_kernel": None,
+            "sync_required": not bindings_match_kernel,
+            "invalid_connection_count": 0,
+            "missing_required_count": 0,
+            "ok": bindings_match_kernel and not messages["errors"],
+            "desired_bindings": desired_rows,
+            "current_bindings": current_rows,
+            "desired_inputs": [],
+            "desired_outputs": [],
+            "current_inputs": [],
+            "current_outputs": [],
+            "inputs": [],
+            "hints": hints,
+            **messages,
+        }
+
+    if _is_sop_opencl(opencl_node):
+        desired_rows = _desired_binding_row_summary(bindings)
+        current_rows = _binding_row_summary(opencl_node)
+        bindings_match_kernel = current_rows == desired_rows
+        messages = _node_messages(opencl_node)
+        hints: list[str] = []
+        if not bindings_match_kernel:
+            hints.append(
+                f"OpenCL SOP binding rows differ from kernel #bind directives. "
+                f"Try: houdini-cli opencl sync {localize(opencl_node.path())}"
+            )
+        return {
+            "node_path": localize(opencl_node.path()),
+            "context": "sop",
+            "runover": runover,
+            "binding_count": len(bindings),
+            "bindings_match_kernel": bindings_match_kernel,
+            "signature_matches_kernel": None,
+            "sync_required": not bindings_match_kernel,
+            "invalid_connection_count": 0,
+            "missing_required_count": 0,
+            "ok": bindings_match_kernel and not messages["errors"],
+            "desired_bindings": desired_rows,
+            "current_bindings": current_rows,
+            "desired_inputs": [],
+            "desired_outputs": [],
+            "current_inputs": [],
+            "current_outputs": [],
+            "inputs": [],
+            "hints": hints,
+            **messages,
+        }
+
     desired_inputs = _port_signature_entries(bindings, output=False)
     desired_outputs = _port_signature_entries(bindings, output=True)
     current_inputs = _summary_signature_entries(opencl_node, output=False)
@@ -608,6 +852,7 @@ def _validation_summary(
 
     return {
         "node_path": localize(opencl_node.path()),
+        "context": "cop",
         "runover": runover,
         "binding_count": len(bindings),
         "signature_matches_kernel": signature_matches_kernel,
@@ -633,7 +878,14 @@ def _sync_bindings(opencl_node: Any, bindings: list[Any]) -> None:
         return
 
     opencl_node.setParms({"bindings": len(bindings)})
-    opencl_node.setParms(_binding_row_values(bindings))
+    parm_values = _binding_row_values(bindings)
+    if _is_sop_opencl(opencl_node):
+        parm_values = {
+            name: value
+            for name, value in parm_values.items()
+            if opencl_node.parm(name) is not None
+        }
+    opencl_node.setParms(parm_values)
     _link_binding_value_parms(opencl_node, bindings)
 
 
@@ -672,6 +924,33 @@ def _apply_signature(
     clear: bool,
     bindings_only: bool,
 ) -> dict[str, Any]:
+    if _is_dop_opencl(opencl_node):
+        if clear:
+            opencl_node.setParms({"paramcount": 0})
+        parm_bindings = [
+            binding
+            for binding in bindings
+            if str(_binding_scalar(binding, "type")) in _DOP_SPARE_PARM_BINDING_TYPES
+        ]
+        spare_parms = _sync_spare_parms(session, opencl_node, parm_bindings)
+        _sync_dop_bindings(opencl_node, bindings)
+        return {
+            "inputs": [],
+            "outputs": [],
+            "spare_parms": spare_parms,
+        }
+
+    if _is_sop_opencl(opencl_node):
+        if clear:
+            opencl_node.setParms({"bindings": 0})
+        spare_parms = _sync_spare_parms(session, opencl_node, _parm_bindings(bindings))
+        _sync_bindings(opencl_node, bindings)
+        return {
+            "inputs": [],
+            "outputs": [],
+            "spare_parms": spare_parms,
+        }
+
     input_entries = _port_signature_entries(bindings, output=False)
     output_entries = _port_signature_entries(bindings, output=True)
 
@@ -731,7 +1010,9 @@ def handle_sync(args: argparse.Namespace) -> dict:
             bindings_only=args.bindings_only,
         )
         if runover:
-            opencl_node.parm("options_runover").set(runover)
+            runover_parm = opencl_node.parm("runover") or opencl_node.parm("options_runover")
+            if runover_parm is not None:
+                runover_parm.set(runover)
 
         validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
         disconnected_inputs: list[int] = []
@@ -747,6 +1028,7 @@ def handle_sync(args: argparse.Namespace) -> dict:
         return success_result(
             {
                 "node_path": localize(opencl_node.path()),
+                "context": _opencl_context(opencl_node),
                 "runover": runover,
                 "binding_count": len(bindings),
                 "bindings_only": bool(args.bindings_only),

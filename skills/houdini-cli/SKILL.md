@@ -15,6 +15,9 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 - For the plain Solver SOP, and before unlocking simulation wrappers such as Vellum Solver, RBD Bullet Solver, Pyro Solver, or MPM Solver, inspect the HDA `DiveTarget` and `EditableNodes` sections. Resolve the declared dive target relative to the solver node and create custom nodes there; these networks are intended to remain editable while the asset stays locked. The plain Solver SOP should almost always be edited through its dive target, not unlocked. Do not guess the path or capitalization, and only unlock an asset when no suitable editable dive target exists and the task explicitly requires changing protected internals.
 - COPs has been superseded by Copernicus. Legacy COP nodes are not compatible with the Copernicus context. Never use the legacy COP context unless the user explicitly requires it.
 - Before any COP or Copernicus-related work, read `skills/houdini-cli/copernicus/copernicus.md`.
+- Before OpenCL SOP geometry work, read `skills/houdini-cli/opencl/opencl_sops.md`.
+- Before Gas OpenCL or DOP GPU microsolver work, read `skills/houdini-cli/opencl/opencl_dops.md`.
+- For routine OpenCL work, use the documented patterns without broad native-node inspection. Inspect shipped kernels selectively when behavior is unfamiliar, solver-specific, synchronization-heavy, or unclear from the prepared help.
 
 ## Recipes
 

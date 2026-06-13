@@ -593,7 +593,7 @@ HELP_TREE = {
         }
     },
     "opencl": {
-        "description": "Synchronize OpenCL node bindings, visible signature rows, and generated spare parameters from kernel code.",
+        "description": "Synchronize OpenCL node bindings and generated spare parameters across COP, SOP, and DOP contexts.",
         "notes": [
             "After editing an OpenCL kernel, run: houdini-cli opencl sync <node-path>",
             "Use opencl validate to check current port types, kernel/signature drift, and stale incompatible wires before or after syncing.",
@@ -601,14 +601,14 @@ HELP_TREE = {
         ],
         "children": {
             "validate": {
-                "description": "Validate an OpenCL node's current visible signature and wired input types against its kernel #bind directives.",
+                "description": "Validate OpenCL COP signatures, SOP bindings, or DOP parameter rows against kernel #bind directives.",
                 "usage": "houdini-cli opencl validate <node-path>",
                 "examples": [
                     "uv run houdini-cli opencl validate /obj/geo1/work_here/opencl1",
                 ],
             },
             "sync": {
-                "description": "Refresh an OpenCL node from its kernel #bind directives, including bindings, signature rows, generated spare parms, and post-sync validation.",
+                "description": "Refresh an OpenCL node from #bind directives using COP signatures, SOP bindings, or Gas OpenCL DOP parameters.",
                 "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid]",
                 "examples": [
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1",
