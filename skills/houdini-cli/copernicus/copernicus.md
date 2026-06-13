@@ -94,6 +94,12 @@ Integer pixel math produces square pixel blocks regardless of image dimensions. 
 | `?` | Optional binding; test with `#if @name.bound` | `#bind layer mask?` |
 | `!&` | Writable raw image, commonly used for aligned output | `#bind layer !&dst` |
 
+### Time Bindings
+
+`@Time` is available only when **Include Time** is enabled. `@TimeInc` is
+available only when **Include Timestep** is enabled; **Use Context's
+Timestep** controls whether that value comes from the surrounding context.
+
 ## Simulations and Blocks
 
 Copernicus simulations use a Block Begin and Block End pair to feed the block's
@@ -114,6 +120,20 @@ For a typical user-authored simulation:
 Block ports carry typed COP data such as Mono, UV, RGB, RGBA, geometry, VDBs,
 or cables. They are not scalar control parameters. Multiple independent state
 layers can be fed back through separate matching ports.
+
+Copernicus layers can also serve as general GPU data buffers rather than
+displayable images. Texels may store fields, records, velocities, IDs, or
+other structured state, with multiple layers carrying independent data
+through the simulation block.
+
+### Rasterizing Geometry Data
+
+SOP Import brings geometry into Copernicus, where Rasterize Setup can unwrap
+it into UV space and Rasterize Geometry can convert arbitrary numeric
+attributes into layers. Preserving attributes such as original position and
+normal allows UV-space effects to remain aware of geometry-space position,
+orientation, and other SOP data. This provides a practical bridge between
+geometry, image, UV, and world-space processing.
 
 Keep operations that do not depend on previous simulation results outside the
 block when possible. Bring external data into the block only when it must be
