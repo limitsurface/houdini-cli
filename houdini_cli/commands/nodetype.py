@@ -3,14 +3,109 @@
 from __future__ import annotations
 
 import argparse
+import json
 from typing import Any
 
 from ..format.envelopes import success_result
-from ..transport.rpyc import connect
+from ..transport.rpyc import connect, localize
 from .recipe_common import tool_recipe_items
 
 DEFAULT_LIMIT = 50
 VALID_CATEGORIES = ("obj", "sop", "cop", "vop", "rop", "lop", "dop", "shop")
+
+_BULK_DISCOVERY_CODE = """
+import json as _houdini_cli_json
+import hou
+
+_houdini_cli_category = {
+    "obj": hou.objNodeTypeCategory,
+    "sop": hou.sopNodeTypeCategory,
+    "cop": hou.copNodeTypeCategory,
+    "vop": hou.vopNodeTypeCategory,
+    "rop": hou.ropNodeTypeCategory,
+    "lop": hou.lopNodeTypeCategory,
+    "dop": hou.dopNodeTypeCategory,
+    "shop": hou.shopNodeTypeCategory,
+}[_houdini_cli_category_key]()
+_houdini_cli_items = [
+    {
+        "key": str(_houdini_cli_key),
+        "description": str(_houdini_cli_type.description()),
+        "kind": "node",
+    }
+    for _houdini_cli_key, _houdini_cli_type
+    in _houdini_cli_category.nodeTypes().items()
+]
+_houdini_cli_category_name = str(_houdini_cli_category.name())
+for _houdini_cli_key, _houdini_cli_type in hou.dataNodeTypeCategory().nodeTypes().items():
+    _houdini_cli_definition = _houdini_cli_type.definition()
+    if _houdini_cli_definition is None:
+        continue
+    _houdini_cli_section = _houdini_cli_definition.sections().get("data.recipe.json")
+    if _houdini_cli_section is None:
+        continue
+    try:
+        _houdini_cli_payload = _houdini_cli_json.loads(_houdini_cli_section.contents())
+    except (TypeError, ValueError):
+        continue
+    _houdini_cli_properties = _houdini_cli_payload.get("properties", {})
+    _houdini_cli_tool = _houdini_cli_payload.get("tool", {})
+    if _houdini_cli_properties.get("recipe_category") not in {"tool_recipe", "tab_tool_recipe"}:
+        continue
+    if not _houdini_cli_properties.get("visible", True):
+        continue
+    _houdini_cli_network_categories = _houdini_cli_tool.get("network_categories", [])
+    if (
+        _houdini_cli_category_name not in _houdini_cli_network_categories
+        and _houdini_cli_category_name != _houdini_cli_properties.get("nodetype_category")
+    ):
+        continue
+    _houdini_cli_label = str(_houdini_cli_type.description())
+    _houdini_cli_items.append({
+        "key": str(_houdini_cli_key),
+        "description": _houdini_cli_label + " (recipe)",
+        "label": _houdini_cli_label,
+        "kind": "recipe",
+        "icon": str(_houdini_cli_tool.get("icon") or _houdini_cli_type.icon()),
+        "submenus": [str(_houdini_cli_value) for _houdini_cli_value in _houdini_cli_tool.get("tab_submenus", [])],
+        "recipe_category": str(_houdini_cli_properties["recipe_category"]),
+    })
+_houdini_cli_discovery_json = _houdini_cli_json.dumps(_houdini_cli_items)
+"""
+
+_BULK_GET_CODE = """
+import json as _houdini_cli_json
+import hou
+
+_houdini_cli_category = {
+    "obj": hou.objNodeTypeCategory,
+    "sop": hou.sopNodeTypeCategory,
+    "cop": hou.copNodeTypeCategory,
+    "vop": hou.vopNodeTypeCategory,
+    "rop": hou.ropNodeTypeCategory,
+    "lop": hou.lopNodeTypeCategory,
+    "dop": hou.dopNodeTypeCategory,
+    "shop": hou.shopNodeTypeCategory,
+}[_houdini_cli_category_key]()
+_houdini_cli_type = _houdini_cli_category.nodeTypes().get(_houdini_cli_type_key)
+_houdini_cli_item = None
+if _houdini_cli_type is not None:
+    _houdini_cli_item = {
+        "key": str(_houdini_cli_type.name()),
+        "name": str(_houdini_cli_type.name()),
+        "description": str(_houdini_cli_type.description()),
+        "category": _houdini_cli_category_key,
+        "icon": str(_houdini_cli_type.icon()),
+        "hidden": bool(_houdini_cli_type.hidden()),
+        "deprecated": bool(_houdini_cli_type.deprecated()),
+        "namespace_order": [str(_houdini_cli_name) for _houdini_cli_name in _houdini_cli_type.namespaceOrder()],
+        "min_num_inputs": int(_houdini_cli_type.minNumInputs()),
+        "max_num_inputs": int(_houdini_cli_type.maxNumInputs()),
+        "is_generator": bool(_houdini_cli_type.isGenerator()),
+        "kind": "node",
+    }
+_houdini_cli_get_json = _houdini_cli_json.dumps(_houdini_cli_item)
+"""
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -95,6 +190,15 @@ def _category_name(category: Any) -> str:
 
 
 def _discovery_items(session: Any, category_key: str) -> list[dict[str, Any]]:
+    connection = getattr(session, "connection", None)
+    if connection is not None:
+        namespace = connection.namespace
+        namespace["_houdini_cli_category_key"] = category_key
+        connection.execute(_BULK_DISCOVERY_CODE)
+        items = json.loads(localize(namespace["_houdini_cli_discovery_json"]))
+        items.sort(key=lambda item: (item["description"].lower(), item["key"].lower()))
+        return items
+
     category = _get_category(session, category_key)
     items = [_compact_item(key, node_type) for key, node_type in _node_type_items(category)]
     items.extend(tool_recipe_items(session, _category_name(category)))
@@ -161,6 +265,23 @@ def handle_find(args: argparse.Namespace) -> dict:
 
 def handle_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
+        connection = getattr(session, "connection", None)
+        if connection is not None:
+            namespace = connection.namespace
+            namespace["_houdini_cli_category_key"] = args.category
+            namespace["_houdini_cli_type_key"] = args.type_key
+            connection.execute(_BULK_GET_CODE)
+            item = json.loads(localize(namespace["_houdini_cli_get_json"]))
+            if item is not None:
+                return success_result(item)
+            recipe = next(
+                (row for row in _discovery_items(session, args.category) if row["key"] == args.type_key),
+                None,
+            )
+            if recipe is not None:
+                return success_result({**recipe, "category": args.category})
+            raise ValueError(f"Node type or tool recipe not found: category={args.category} key={args.type_key}")
+
         category = _get_category(session, args.category)
         node_type = category.nodeTypes().get(args.type_key)
         if node_type is not None:

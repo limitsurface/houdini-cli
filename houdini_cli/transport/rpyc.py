@@ -12,7 +12,12 @@ import rpyc
 from rpyc.core.async_ import AsyncResultTimeout
 from rpyc.utils.classic import obtain
 
-from ..runtime.timeouts import CONNECT_TIMEOUT_SECONDS, SYNC_REQUEST_TIMEOUT_SECONDS
+from ..runtime.timeouts import (
+    CONNECTION_QUEUE_TIMEOUT_SECONDS,
+    CONNECT_TIMEOUT_SECONDS,
+    SYNC_REQUEST_TIMEOUT_SECONDS,
+)
+from .gate import connection_gate
 
 logger = logging.getLogger(__name__)
 
@@ -64,28 +69,29 @@ def _connect_error_message(host: str, port: int, exc: Exception) -> str:
 @contextlib.contextmanager
 def connect(host: str, port: int, *, sync_request_timeout_seconds: float | None = None) -> HoudiniSession:
     logger.debug("Connecting to Houdini at %s:%s", host, port)
-    old_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(CONNECT_TIMEOUT_SECONDS)
-    try:
+    with connection_gate(host, port, CONNECTION_QUEUE_TIMEOUT_SECONDS):
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(CONNECT_TIMEOUT_SECONDS)
         try:
-            conn = rpyc.classic.connect(host, port)
-        except (socket.timeout, ConnectionRefusedError, EOFError, OSError) as exc:
-            raise TransportConnectionError(_connect_error_message(host, port, exc)) from exc
-    finally:
-        socket.setdefaulttimeout(old_timeout)
+            try:
+                conn = rpyc.classic.connect(host, port)
+            except (socket.timeout, ConnectionRefusedError, EOFError, OSError) as exc:
+                raise TransportConnectionError(_connect_error_message(host, port, exc)) from exc
+        finally:
+            socket.setdefaulttimeout(old_timeout)
 
-    if hasattr(conn, "_config"):
-        conn._config["sync_request_timeout"] = (
-            sync_request_timeout_seconds
-            if sync_request_timeout_seconds is not None
-            else SYNC_REQUEST_TIMEOUT_SECONDS
-        )
+        if hasattr(conn, "_config"):
+            conn._config["sync_request_timeout"] = (
+                sync_request_timeout_seconds
+                if sync_request_timeout_seconds is not None
+                else SYNC_REQUEST_TIMEOUT_SECONDS
+            )
 
-    try:
         try:
-            yield HoudiniSession(connection=conn, hou=conn.modules.hou)
-        except AsyncResultTimeout as exc:
-            raise TransportTimeoutError("Timed out while waiting for Houdini to respond") from exc
-    finally:
-        logger.debug("Closing Houdini connection")
-        conn.close()
+            try:
+                yield HoudiniSession(connection=conn, hou=conn.modules.hou)
+            except AsyncResultTimeout as exc:
+                raise TransportTimeoutError("Timed out while waiting for Houdini to respond") from exc
+        finally:
+            logger.debug("Closing Houdini connection")
+            conn.close()

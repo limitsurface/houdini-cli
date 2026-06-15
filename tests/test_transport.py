@@ -1,3 +1,4 @@
+import contextlib
 from types import SimpleNamespace
 
 import pytest
@@ -52,3 +53,31 @@ def test_connect_uses_override_sync_timeout(monkeypatch) -> None:
         assert session.connection._config["sync_request_timeout"] == 9.0
 
     assert fake_connection.closed is True
+
+
+def test_connect_holds_local_gate_for_connection_lifetime(monkeypatch) -> None:
+    events = []
+    fake_connection = FakeConnection()
+
+    @contextlib.contextmanager
+    def fake_gate(host, port, timeout):
+        events.append(("gate-enter", host, port, timeout))
+        yield
+        events.append(("gate-exit",))
+
+    def fake_connect(host, port):
+        events.append(("connect", host, port))
+        return fake_connection
+
+    monkeypatch.setattr(transport, "connection_gate", fake_gate)
+    monkeypatch.setattr(transport.rpyc.classic, "connect", fake_connect)
+
+    with transport.connect("localhost", 18811):
+        events.append(("command",))
+
+    assert [event[0] for event in events] == [
+        "gate-enter",
+        "connect",
+        "command",
+        "gate-exit",
+    ]
