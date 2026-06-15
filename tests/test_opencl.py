@@ -747,6 +747,42 @@ def test_handle_validate_reports_stale_opencl_binding_rows(monkeypatch) -> None:
     assert any("not linked to generated spare parms" in hint and "gain" in hint for hint in hints)
 
 
+def test_handle_validate_accepts_vector_spare_parm_axis_suffixes(monkeypatch) -> None:
+    bindings = [
+        _binding(name="manual_num", type="float4", portname="manual_num", defval=True),
+        _binding(name="manual_den", type="float3", portname="manual_den", defval=True),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj.setParms(
+        {
+            "bindings": 2,
+            "bindings1_name": "manual_num",
+            "bindings1_type": "float4",
+            "bindings2_name": "manual_den",
+            "bindings2_type": "float3",
+        }
+    )
+    for suffix, parm_name in zip("xyzw", ("bindings1_v4val1", "bindings1_v4val2", "bindings1_v4val3", "bindings1_v4val4")):
+        node_obj._parms[parm_name] = FakeParm(0.0)
+        node_obj._parms[parm_name].setExpression(f'ch("./manual_num{suffix}")')
+    for suffix, parm_name in zip("xyz", ("bindings2_v3val1", "bindings2_v3val2", "bindings2_v3val3")):
+        node_obj._parms[parm_name] = FakeParm(0.0)
+        node_obj._parms[parm_name].setExpression(f'ch("./manual_den{suffix}")')
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+        )
+    )
+
+    assert result["ok"] is True
+    assert not any("not linked to generated spare parms" in hint for hint in result["data"]["hints"])
+
+
 def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:
     bindings = [
         _binding(name="src", type="layer", portname="src", readable=True, optional=False),

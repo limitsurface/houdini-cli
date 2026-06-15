@@ -542,18 +542,18 @@ def _parm_expression(parm: Any) -> str | None:
         return None
 
 
-def _binding_value_parm_names(index: int, binding_type: str) -> list[tuple[str, str]]:
+def _binding_value_parm_names(index: int, binding_type: str) -> list[tuple[str, tuple[str, ...]]]:
     prefix = f"bindings{index}_"
     if binding_type == "int":
-        return [(f"{prefix}intval", "")]
+        return [(f"{prefix}intval", ("",))]
     if binding_type == "float":
-        return [(f"{prefix}fval", "")]
+        return [(f"{prefix}fval", ("",))]
     if binding_type == "float2":
-        return [(f"{prefix}v2val{component}", str(component)) for component in range(1, 3)]
+        return [(f"{prefix}v2val{component}", (str(component), "xy"[component - 1])) for component in range(1, 3)]
     if binding_type == "float3":
-        return [(f"{prefix}v3val{component}", str(component)) for component in range(1, 4)]
+        return [(f"{prefix}v3val{component}", (str(component), "xyz"[component - 1])) for component in range(1, 4)]
     if binding_type == "float4":
-        return [(f"{prefix}v4val{component}", str(component)) for component in range(1, 5)]
+        return [(f"{prefix}v4val{component}", (str(component), "xyzw"[component - 1])) for component in range(1, 5)]
     return []
 
 
@@ -591,10 +591,13 @@ def _binding_row_hints(opencl_node: Any) -> list[str]:
             continue
 
         expected = f'ch("./{name}")'
-        for parm_name, component_suffix in _binding_value_parm_names(index, binding_type):
+        for parm_name, component_suffixes in _binding_value_parm_names(index, binding_type):
             expr = _parm_expression(opencl_node.parm(parm_name))
-            expected_expr = expected if not component_suffix else f'ch("./{name}{component_suffix}")'
-            if expr != expected_expr:
+            expected_exprs = {
+                expected if not component_suffix else f'ch("./{name}{component_suffix}")'
+                for component_suffix in component_suffixes
+            }
+            if expr not in expected_exprs:
                 static_rows.append(name)
                 break
 
