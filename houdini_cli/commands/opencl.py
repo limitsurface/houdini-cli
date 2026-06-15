@@ -30,6 +30,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="Validate OpenCL COP signatures, SOP bindings, or DOP parameters against a kernel.",
     )
     validate_parser.add_argument("node_path", help="OpenCL node path.")
+    validate_parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Return full desired/current signatures, connections, hints, and messages.",
+    )
     validate_parser.set_defaults(handler=handle_validate)
 
     sync_parser = opencl_subparsers.add_parser(
@@ -51,6 +56,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         "--disconnect-invalid",
         action="store_true",
         help="After syncing, disconnect any wired inputs whose source output type no longer matches the regenerated input type.",
+    )
+    sync_parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Include the full post-sync validation payload.",
     )
     sync_parser.set_defaults(handler=handle_sync)
 
@@ -379,15 +389,58 @@ def _existing_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[
     for row in entries:
         if not isinstance(row, dict):
             continue
-        name = row.get(name_key)
+        name = _data_scalar(row.get(name_key))
         if not name:
             continue
         entry: dict[str, Any] = {
             "name": str(name),
-            "type": str(row.get(type_key) or "floatn"),
-            "optional": bool(row.get(optional_key, False)) if not output else False,
+            "type": str(_data_scalar(row.get(type_key)) or "floatn"),
+            "optional": bool(_data_scalar(row.get(optional_key, False))) if not output else False,
         }
         result.append(entry)
+    return result
+
+
+def _data_scalar(value: Any) -> Any:
+    while isinstance(value, dict) and "value" in value:
+        value = value["value"]
+    return value
+
+
+def _compact_binding_rows(bindings: list[Any]) -> list[list[Any]]:
+    rows = []
+    for binding in bindings:
+        binding_type = str(_binding_scalar(binding, "type"))
+        readable = bool(_binding_scalar(binding, "readable"))
+        writeable = bool(_binding_scalar(binding, "writeable"))
+        if binding_type in _SPARE_PARM_BINDING_TYPES:
+            direction = "parm"
+        elif readable and writeable:
+            direction = "inout"
+        elif writeable:
+            direction = "output"
+        else:
+            direction = "input"
+        rows.append([_spare_parm_name(binding), binding_type, direction])
+    return rows
+
+
+def _compact_validation(validation: dict[str, Any], bindings: list[Any]) -> dict[str, Any]:
+    result = {
+        "node_path": validation["node_path"],
+        "context": validation.get("context", "cop"),
+        "runover": validation.get("runover", ""),
+        "binding_count": validation["binding_count"],
+        "binding_cols": ["name", "type", "direction"],
+        "bindings": _compact_binding_rows(bindings),
+        "clean": bool(validation["ok"]),
+        "sync_required": bool(validation.get("sync_required", False)),
+        "invalid_connection_count": validation.get("invalid_connection_count", 0),
+        "missing_required_count": validation.get("missing_required_count", 0),
+    }
+    for key in ("errors", "warnings", "messages", "hints"):
+        if validation.get(key):
+            result[key] = validation[key]
     return result
 
 
@@ -1025,19 +1078,18 @@ def handle_sync(args: argparse.Namespace) -> dict:
                 _safe_cook(opencl_node)
                 validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
 
-        return success_result(
-            {
-                "node_path": localize(opencl_node.path()),
-                "context": _opencl_context(opencl_node),
-                "runover": runover,
-                "binding_count": len(bindings),
-                "bindings_only": bool(args.bindings_only),
-                "disconnect_invalid": bool(getattr(args, "disconnect_invalid", False)),
-                "disconnected_inputs": disconnected_inputs,
-                **summary,
-                "validation": validation,
-            }
-        )
+        data = {
+            **_compact_validation(validation, bindings),
+            "bindings_only": bool(args.bindings_only),
+            "disconnect_invalid": bool(getattr(args, "disconnect_invalid", False)),
+            "disconnected_inputs": disconnected_inputs,
+            "spare_parms": summary["spare_parms"],
+            "inputs": summary["inputs"],
+            "outputs": summary["outputs"],
+        }
+        if getattr(args, "details", False):
+            data["validation"] = validation
+        return success_result(data)
 
 
 def handle_validate(args: argparse.Namespace) -> dict:
@@ -1049,4 +1101,7 @@ def handle_validate(args: argparse.Namespace) -> dict:
         kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
         bindings = list(session.hou.text.oclExtractBindings(kernel_code))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
-        return success_result(_validation_summary(opencl_node, bindings=bindings, runover=runover))
+        validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
+        if getattr(args, "details", False):
+            return success_result(validation)
+        return success_result(_compact_validation(validation, bindings))

@@ -106,6 +106,11 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
     list_parser.add_argument("node_path", help="Node path to inspect.")
     list_parser.add_argument("--non-default", action="store_true", help="Only include non-default parameters.")
     list_parser.add_argument("--max-parms", type=int, default=100, help="Maximum parameters to return.")
+    list_parser.add_argument(
+        "--full-values",
+        action="store_true",
+        help="Do not truncate long string parameter values.",
+    )
     list_parser.set_defaults(handler=handle_node_parms_list)
 
     find_parser = parms_subparsers.add_parser("find", help="Search parameters on one node.")
@@ -114,6 +119,11 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
     find_parser.add_argument("--type", dest="parm_type", help="Exact parm template type match.")
     find_parser.add_argument("--non-default", action="store_true", help="Only include non-default parameters.")
     find_parser.add_argument("--max-parms", type=int, default=100, help="Maximum parameters to return.")
+    find_parser.add_argument(
+        "--full-values",
+        action="store_true",
+        help="Do not truncate long string parameter values.",
+    )
     find_parser.set_defaults(handler=handle_node_parms_find)
 
 
@@ -624,17 +634,19 @@ def _parm_display_name(parm: Any) -> str:
     return _tuple_name(parm) if len(members) > 1 else localize(parm.name())
 
 
-def _parm_row_value(parm: Any) -> Any:
+def _parm_row_value(parm: Any, *, full_values: bool = False) -> Any:
     members = _tuple_members(parm)
     data = localize(parm.valueAsData())
+    if not full_values and isinstance(data, str) and len(data) > 120:
+        return data[:117] + "..."
     return data if len(members) > 1 else data
 
 
-def _parm_row(parm: Any) -> list[Any]:
+def _parm_row(parm: Any, *, full_values: bool = False) -> list[Any]:
     return [
         _parm_display_name(parm),
         _tuple_type_label(parm),
-        _parm_row_value(parm),
+        _parm_row_value(parm, full_values=full_values),
         _parm_flags(parm),
     ]
 
@@ -679,7 +691,7 @@ def handle_node_parms_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = _get_node(session, args.node_path)
         rows = [
-            _parm_row(parm)
+            _parm_row(parm, full_values=getattr(args, "full_values", False))
             for parm in _iter_discoverable_parms(node)
             if _matches_parm(parm, name=None, parm_type=None, non_default=args.non_default)
         ][: args.max_parms]
@@ -697,7 +709,7 @@ def handle_node_parms_find(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = _get_node(session, args.node_path)
         rows = [
-            _parm_row(parm)
+            _parm_row(parm, full_values=getattr(args, "full_values", False))
             for parm in _iter_discoverable_parms(node)
             if _matches_parm(parm, name=args.name, parm_type=args.parm_type, non_default=args.non_default)
         ][: args.max_parms]

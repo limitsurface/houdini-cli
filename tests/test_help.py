@@ -238,7 +238,7 @@ def test_handle_help_opencl_sync_topic_has_examples() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl", "sync"]))
 
     assert result["ok"] is True
-    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid]"
+    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--details]"
     assert any("--bindings-only" in example for example in result["data"]["examples"])
 
 
@@ -246,7 +246,7 @@ def test_handle_help_opencl_validate_topic_has_usage() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl", "validate"]))
 
     assert result["ok"] is True
-    assert result["data"]["usage"] == "houdini-cli opencl validate <node-path>"
+    assert result["data"]["usage"] == "houdini-cli opencl validate <node-path> [--details]"
 
 
 def test_handle_help_cop_group_lists_info() -> None:

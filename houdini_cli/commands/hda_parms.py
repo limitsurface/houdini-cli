@@ -31,11 +31,141 @@ _COLOR_TYPES = {"rgb": "RGB", "hsv": "HSV", "hsl": "HSL", "lab": "LAB", "xyz": "
 
 def handle_parms_inspect(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        definition = definition_for_node(get_node(session, args.asset_node))
+        node = get_node(session, args.asset_node)
+        definition = definition_for_node(node)
+        if getattr(args, "tree", False):
+            return success_result(
+                {
+                    "asset_node": args.asset_node,
+                    "parms": parm_tree(definition.parmTemplateGroup().entries()),
+                }
+            )
+        rows = _flat_parm_rows(
+            node,
+            definition.parmTemplateGroup().entries(),
+            folder_filter=getattr(args, "folder", None),
+            name_filter=getattr(args, "name", None),
+            include_values=getattr(args, "values", False),
+            include_defaults=getattr(args, "defaults", False),
+        )
+        cols = ["name", "label", "type", "folder"]
+        if getattr(args, "values", False):
+            cols.append("value")
+        if getattr(args, "defaults", False):
+            cols.append("default")
         return success_result(
             {
                 "asset_node": args.asset_node,
-                "parms": parm_tree(definition.parmTemplateGroup().entries()),
+                "count": len(rows),
+                "cols": cols,
+                "rows": rows,
+            }
+        )
+
+
+def _template_default(template: Any) -> Any:
+    method = getattr(template, "defaultValue", None)
+    if not callable(method):
+        return None
+    try:
+        return localize(method())
+    except Exception:
+        return None
+
+
+def _flat_parm_rows(
+    node: Any,
+    entries: Any,
+    *,
+    folder_filter: str | None = None,
+    name_filter: str | None = None,
+    include_values: bool = False,
+    include_defaults: bool = False,
+    parents: tuple[str, ...] = (),
+) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    folder_needle = folder_filter.lower() if folder_filter else None
+    name_needle = name_filter.lower() if name_filter else None
+    for template in entries:
+        name = str(localize(template.name()))
+        label = str(localize(template.label()))
+        type_name = str(localize(template.type().name()))
+        if type_name in {"Folder", "FolderSet"}:
+            rows.extend(
+                _flat_parm_rows(
+                    node,
+                    template.parmTemplates(),
+                    folder_filter=folder_filter,
+                    name_filter=name_filter,
+                    include_values=include_values,
+                    include_defaults=include_defaults,
+                    parents=(*parents, label),
+                )
+            )
+            continue
+        if type_name in {"Button", "Folder", "FolderSet", "Label", "Separator"}:
+            continue
+        folder_path = "/".join(parents)
+        if folder_needle and folder_needle not in folder_path.lower():
+            continue
+        if name_needle and name_needle not in name.lower() and name_needle not in label.lower():
+            continue
+        row: list[Any] = [name, label, type_name, folder_path]
+        if include_values:
+            parm = node.parm(name)
+            row.append(localize(parm.eval()) if parm is not None else None)
+        if include_defaults:
+            row.append(_template_default(template))
+        rows.append(row)
+    return rows
+
+
+def _folder_rows(entries: Any, parents: tuple[str, ...] = ()) -> list[list[Any]]:
+    rows = []
+    for template in entries:
+        if str(localize(template.type().name())) not in {"Folder", "FolderSet"}:
+            continue
+        label = str(localize(template.label()))
+        path = "/".join((*parents, label))
+        children = list(template.parmTemplates())
+        rows.append([str(localize(template.name())), label, path, len(children)])
+        rows.extend(_folder_rows(children, (*parents, label)))
+    return rows
+
+
+def handle_parms_folders(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        definition = definition_for_node(get_node(session, args.asset_node))
+        rows = _folder_rows(definition.parmTemplateGroup().entries())
+        return success_result(
+            {
+                "asset_node": args.asset_node,
+                "count": len(rows),
+                "cols": ["name", "label", "path", "children"],
+                "rows": rows,
+            }
+        )
+
+
+def handle_parms_locate(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        node = get_node(session, args.asset_node)
+        definition = definition_for_node(node)
+        rows = _flat_parm_rows(
+            node,
+            definition.parmTemplateGroup().entries(),
+            name_filter=args.parm_name,
+            include_values=True,
+            include_defaults=True,
+        )
+        exact = [row for row in rows if row[0] == args.parm_name]
+        if not exact:
+            raise ValueError(f"Published HDA parameter not found: {args.parm_name}")
+        return success_result(
+            {
+                "asset_node": args.asset_node,
+                "cols": ["name", "label", "type", "folder", "value", "default"],
+                "row": exact[0],
             }
         )
 

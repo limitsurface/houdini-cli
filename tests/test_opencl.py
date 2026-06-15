@@ -483,6 +483,7 @@ def test_handle_sync_sop_rebuilds_all_binding_rows_without_signature(monkeypatch
             clear=True,
             bindings_only=False,
             disconnect_invalid=False,
+            details=True,
         )
     )
 
@@ -540,6 +541,7 @@ def test_handle_sync_dop_rebuilds_gas_opencl_parameters(monkeypatch) -> None:
             clear=True,
             bindings_only=False,
             disconnect_invalid=False,
+            details=True,
         )
     )
 
@@ -587,6 +589,7 @@ def test_handle_sync_groups_ports_and_preserves_metadata(monkeypatch) -> None:
             host="localhost",
             port=18811,
             node_path="/obj/cops/opencl1",
+            details=True,
             clear=False,
             bindings_only=False,
         )
@@ -692,6 +695,7 @@ def test_handle_validate_reports_signature_drift_and_invalid_connection(monkeypa
             host="localhost",
             port=18811,
             node_path="/obj/cops/opencl1",
+            details=True,
         )
     )
 
@@ -766,6 +770,7 @@ def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:
             clear=True,
             bindings_only=False,
             disconnect_invalid=True,
+            details=True,
         )
     )
 
@@ -775,3 +780,48 @@ def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:
     assert data["disconnected_inputs"] == [1]
     assert data["validation"]["invalid_connection_count"] == 0
     assert data["validation"]["inputs"][1]["connected"] is False
+
+
+def test_handle_validate_compact_response_keeps_binding_names(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+        _binding(name="gain", type="float", portname="gain", fval=2.0, defval=True),
+    ]
+    node_obj = FakeOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(host="localhost", port=18811, node_path="/obj/cops/opencl1", details=False)
+    )
+
+    assert result["data"]["binding_cols"] == ["name", "type", "direction"]
+    assert result["data"]["bindings"] == [
+        ["src", "layer", "input"],
+        ["dst", "layer", "output"],
+        ["gain", "float", "parm"],
+    ]
+    assert "desired_inputs" not in result["data"]
+
+
+def test_existing_signature_unwraps_parms_as_data_values(monkeypatch) -> None:
+    node_obj = FakeOpenclNode()
+    node_obj.signature_data = {
+        "inputs": [
+            {
+                "input#_name": {"value": "src"},
+                "input#_type": {"value": "floatn"},
+                "input#_optional": {"value": False},
+            }
+        ],
+        "outputs": [{"output#_name": {"value": "dst"}, "output#_type": {"value": "floatn"}}],
+    }
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    assert opencl._existing_signature_entries(node_obj, output=False) == [
+        {"name": "src", "type": "floatn", "optional": False}
+    ]
+    assert opencl._existing_signature_entries(node_obj, output=True) == [
+        {"name": "dst", "type": "floatn", "optional": False}
+    ]

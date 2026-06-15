@@ -160,9 +160,9 @@ class FakeNode:
 
 
 def _bind_tuple(tuple_name: str, *parms: FakeParm) -> None:
-    for parm in parms:
-        parm._tuple_name = tuple_name
-        parm._tuple_members = list(parms)
+    for item in parms:
+        item._tuple_name = tuple_name
+        item._tuple_members = list(parms)
 
 
 def test_handle_get_default(monkeypatch) -> None:
@@ -390,6 +390,40 @@ def test_handle_node_parms_find_matches_tuple_component_names(monkeypatch) -> No
     )
     assert result["ok"] is True
     assert result["data"]["rows"] == [["t", "Float3", [1.5, 0.0, 0.0], "n"]]
+
+
+def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None:
+    source = "x" * 200
+    fake_node = FakeNode(
+        [FakeParm(name="kernelcode", path="/obj/x/kernelcode", value=source, template_type="String")]
+    )
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    compact = parm.handle_node_parms_list(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            non_default=False,
+            max_parms=10,
+            full_values=False,
+        )
+    )
+    full = parm.handle_node_parms_list(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            non_default=False,
+            max_parms=10,
+            full_values=True,
+        )
+    )
+
+    assert compact["data"]["rows"][0][2].endswith("...")
+    assert len(compact["data"]["rows"][0][2]) == 120
+    assert full["data"]["rows"][0][2] == source
 
 
 def test_missing_parm_raises() -> None:

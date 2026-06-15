@@ -20,7 +20,9 @@ from .hda_lifecycle import (
 from .hda_parms import (
     handle_parms_apply,
     handle_parms_defaults,
+    handle_parms_folders,
     handle_parms_inspect,
+    handle_parms_locate,
     handle_parms_promote,
 )
 from .hda_sections import (
@@ -223,7 +225,25 @@ def _register_parms(subs: Any) -> None:
     nested = parser.add_subparsers(dest="hda_parms_command", required=True)
     inspect = nested.add_parser("inspect")
     inspect.add_argument("asset_node")
+    inspect.add_argument("--folder", help="Only include parameters below this folder path or label.")
+    inspect.add_argument("--name", help="Case-insensitive parameter name or label match.")
+    inspect.add_argument("--values", action="store_true", help="Include current parameter values.")
+    inspect.add_argument("--defaults", action="store_true", help="Include parameter defaults.")
+    inspect.add_argument("--tree", action="store_true", help="Return the legacy recursive hierarchy.")
     inspect.set_defaults(handler=handle_parms_inspect)
+    find = nested.add_parser("find")
+    find.add_argument("asset_node")
+    find.add_argument("--name", required=True, help="Case-insensitive parameter name or label match.")
+    find.add_argument("--values", action="store_true")
+    find.add_argument("--defaults", action="store_true")
+    find.set_defaults(handler=handle_parms_inspect)
+    folders = nested.add_parser("folders")
+    folders.add_argument("asset_node")
+    folders.set_defaults(handler=handle_parms_folders)
+    locate = nested.add_parser("locate")
+    locate.add_argument("asset_node")
+    locate.add_argument("parm_name")
+    locate.set_defaults(handler=handle_parms_locate)
     apply_cmd = nested.add_parser("apply")
     apply_cmd.add_argument("asset_node")
     apply_cmd.add_argument("--input", required=True)

@@ -155,3 +155,82 @@ def test_invalid_callback_language_is_rejected() -> None:
                 "callback_language": "javascript",
             },
         )
+
+
+class FlatTemplate:
+    def __init__(self, name, label, type_name, children=None, default=None):
+        self._name = name
+        self._label = label
+        self._type_name = type_name
+        self._children = children
+        self._default = default
+
+    def name(self):
+        return self._name
+
+    def label(self):
+        return self._label
+
+    def type(self):
+        return SimpleNamespace(name=lambda: self._type_name)
+
+    def parmTemplates(self):
+        return self._children or []
+
+    def defaultValue(self):
+        return self._default
+
+
+class FlatParm:
+    def __init__(self, value):
+        self._value = value
+
+    def eval(self):
+        return self._value
+
+
+class FlatNode:
+    def parm(self, name):
+        values = {"processing_scale": 0.75, "filter_type": 1}
+        return FlatParm(values[name]) if name in values else None
+
+
+def test_flat_parm_rows_preserve_names_and_folder_paths() -> None:
+    entries = [
+        FlatTemplate(
+            "general",
+            "General",
+            "Folder",
+            [
+                FlatTemplate("processing_scale", "Processing Scale", "Float", default=(1.0,)),
+                FlatTemplate("filter_type", "Low-Pass Filter Type", "Menu", default=1),
+            ],
+        )
+    ]
+
+    rows = hda_parms._flat_parm_rows(
+        FlatNode(),
+        entries,
+        include_values=True,
+        include_defaults=True,
+    )
+
+    assert rows == [
+        ["processing_scale", "Processing Scale", "Float", "General", 0.75, (1.0,)],
+        ["filter_type", "Low-Pass Filter Type", "Menu", "General", 1, 1],
+    ]
+
+
+def test_flat_parm_rows_filter_by_folder_and_name() -> None:
+    entries = [
+        FlatTemplate(
+            "vhs",
+            "VHS FX",
+            "Folder",
+            [FlatTemplate("filter_type", "Low-Pass Filter Type", "Menu", default=1)],
+        )
+    ]
+
+    assert hda_parms._flat_parm_rows(
+        FlatNode(), entries, folder_filter="vhs", name_filter="filter"
+    ) == [["filter_type", "Low-Pass Filter Type", "Menu", "VHS FX"]]

@@ -535,7 +535,22 @@ HELP_TREE = {
             "parms": {
                 "description": "Inspect, apply, promote, and synchronize HDA parameters.",
                 "children": {
-                    "inspect": {"description": "Inspect the published HDA parameter hierarchy.", "usage": "houdini-cli hda parms inspect <asset-node>"},
+                    "inspect": {
+                        "description": "List published HDA parameters as compact flat rows with folder paths.",
+                        "usage": "houdini-cli hda parms inspect <asset-node> [--folder PATH] [--name TEXT] [--values] [--defaults] [--tree]",
+                    },
+                    "find": {
+                        "description": "Search published HDA parameter names and labels.",
+                        "usage": "houdini-cli hda parms find <asset-node> --name TEXT [--values] [--defaults]",
+                    },
+                    "folders": {
+                        "description": "List published HDA folders and child counts.",
+                        "usage": "houdini-cli hda parms folders <asset-node>",
+                    },
+                    "locate": {
+                        "description": "Locate one published HDA parameter and report its folder, value, and default.",
+                        "usage": "houdini-cli hda parms locate <asset-node> <parm-name>",
+                    },
                     "apply": {
                         "description": "Apply a declarative HDA parameter interface.",
                         "usage": "houdini-cli hda parms apply <asset-node> --input <path-or-'-'> [--replace-all]",
@@ -602,14 +617,14 @@ HELP_TREE = {
         "children": {
             "validate": {
                 "description": "Validate OpenCL COP signatures, SOP bindings, or DOP parameter rows against kernel #bind directives.",
-                "usage": "houdini-cli opencl validate <node-path>",
+                "usage": "houdini-cli opencl validate <node-path> [--details]",
                 "examples": [
                     "uv run houdini-cli opencl validate /obj/geo1/work_here/opencl1",
                 ],
             },
             "sync": {
                 "description": "Refresh an OpenCL node from #bind directives using COP signatures, SOP bindings, or Gas OpenCL DOP parameters.",
-                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid]",
+                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--details]",
                 "examples": [
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1",
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only",
