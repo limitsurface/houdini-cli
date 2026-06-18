@@ -360,6 +360,7 @@ def _binding(**kwargs):
         "fieldname": "",
         "fieldoffsets": True,
         "geometry": "Geometry",
+        "input": 0,
         "dataname": "",
         "optionname": "",
         "optiontype": "float",
@@ -499,6 +500,84 @@ def test_handle_sync_sop_rebuilds_all_binding_rows_without_signature(monkeypatch
     assert row_payload["bindings2_name"] == "gain"
     assert result["data"]["validation"]["bindings_match_kernel"] is True
     assert result["data"]["validation"]["signature_matches_kernel"] is None
+
+
+def test_handle_sync_sop_preserves_binding_input_targets(monkeypatch) -> None:
+    bindings = [
+        _binding(
+            name="P",
+            type="attribute",
+            portname="",
+            attribute="P",
+            attribclass="point",
+            attribsize=3,
+            writeable=True,
+            input=0,
+        ),
+        _binding(
+            name="guideP",
+            type="attribute",
+            portname="",
+            attribute="P",
+            attribclass="point",
+            attribsize=3,
+            input=1,
+        ),
+    ]
+    node_obj = FakeSopOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings, runover="attribute")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/opencl1",
+            clear=True,
+            bindings_only=False,
+            disconnect_invalid=False,
+            details=True,
+        )
+    )
+
+    assert result["ok"] is True
+    row_payload = next(payload for payload in node_obj.set_parms_calls if payload.get("bindings1_name") == "P")
+    assert row_payload["bindings1_input"] == 0
+    assert row_payload["bindings2_name"] == "guideP"
+    assert row_payload["bindings2_input"] == 1
+
+
+def test_handle_validate_sop_accepts_explicit_rows_without_bind_directives(monkeypatch) -> None:
+    node_obj = FakeSopOpenclNode()
+    node_obj.kernel_parm.value = "@KERNEL { @P.set(@P); }"
+    node_obj.setParms({"bindings": 2})
+    node_obj.setParms(
+        {
+            "bindings1_name": "P",
+            "bindings1_type": "attribute",
+            "bindings2_name": "guideP",
+            "bindings2_type": "attribute",
+        }
+    )
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, [], runover="attribute")))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/opencl1",
+            details=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["binding_count"] == 2
+    assert result["data"]["bindings"] == [
+        ["P", "attribute", "input"],
+        ["guideP", "attribute", "input"],
+    ]
+    assert result["data"]["sync_required"] is False
 
 
 def test_handle_sync_dop_rebuilds_gas_opencl_parameters(monkeypatch) -> None:

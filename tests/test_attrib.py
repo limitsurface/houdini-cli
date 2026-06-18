@@ -33,18 +33,30 @@ class FakeElement:
         return self.values[attrib_obj.name()]
 
 
+class FakePrimType:
+    def __init__(self, name) -> None:
+        self._name = name
+
+    def name(self):
+        return self._name
+
+
 class FakePrim(FakeElement):
-    def __init__(self, values, vertices) -> None:
+    def __init__(self, values, vertices, prim_type="Polygon") -> None:
         super().__init__(values)
         self._vertices = vertices
+        self._type = FakePrimType(prim_type)
 
     def vertices(self):
         return self._vertices
 
+    def type(self):
+        return self._type
+
 
 class FakeGeometry:
     def __init__(self) -> None:
-        self._point_attribs = [FakeAttrib("P", size=3), FakeAttrib("Cd", size=3)]
+        self._point_attribs = [FakeAttrib("P", size=3), FakeAttrib("Cd", size=3), FakeAttrib("weights", array=True)]
         self._prim_attribs = [FakeAttrib("name", data_type="attribData.String")]
         self._vertex_attribs = [FakeAttrib("uv", size=2)]
         self._detail_attribs = [FakeAttrib("iteration", data_type="attribData.Int")]
@@ -56,7 +68,7 @@ class FakeGeometry:
         ]
         self._prims = [
             FakePrim({"name": "a"}, [FakeElement({"uv": [0.1, 0.2]}), FakeElement({"uv": [0.3, 0.4]})]),
-            FakePrim({"name": "b"}, [FakeElement({"uv": [0.5, 0.6]})]),
+            FakePrim({"name": "b"}, [FakeElement({"uv": [0.5, 0.6]})], prim_type="BezierCurve"),
         ]
         self._detail_values = {"iteration": 7}
 
@@ -150,6 +162,110 @@ def test_handle_list_all_classes(monkeypatch) -> None:
     assert "point" in result["data"]["classes"]
     assert result["data"]["classes"]["point"][0]["name"] == "P"
     assert result["data"]["classes"]["detail"][0]["data_type"] == "int"
+
+
+def test_handle_summary_groups_attributes_by_class_and_type(monkeypatch) -> None:
+    geometry = FakeGeometry()
+    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
+    monkeypatch.setattr(attrib, "localize", lambda value: value)
+
+    result = attrib.handle_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/OUT",
+            attrib_class=None,
+            max_attribs=10,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["count"] == 6
+    assert result["data"]["groups"][0] == {
+        "class": "point",
+        "type": "float",
+        "count": 3,
+        "cols": ["n", "s", "f"],
+        "rows": [["P", 3, ""], ["Cd", 3, ""], ["weights", 1, "A"]],
+    }
+    assert result["meta"]["total_by_class"] == {"point": 3, "prim": 1, "vertex": 1, "detail": 1}
+    assert result["meta"]["truncated"] is False
+
+
+def test_handle_summary_limits_returned_attributes(monkeypatch) -> None:
+    geometry = FakeGeometry()
+    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
+    monkeypatch.setattr(attrib, "localize", lambda value: value)
+
+    result = attrib.handle_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/OUT",
+            attrib_class=None,
+            max_attribs=2,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["count"] == 2
+    assert result["meta"]["truncated"] is True
+    assert result["meta"]["total"] == 6
+
+
+def test_handle_geom_summary_returns_counts_only_by_default(monkeypatch) -> None:
+    geometry = FakeGeometry()
+    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
+    monkeypatch.setattr(attrib, "localize", lambda value: value)
+
+    result = attrib.handle_geom_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/OUT",
+            topology=False,
+            max_prims=10000,
+            max_histogram=10,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["counts"] == {"point": 3, "prim": 2, "vertex": 3}
+    assert "prim_types" not in result["data"]
+    assert "prim_vertex_counts" not in result["data"]
+    assert "meta" not in result
+
+
+def test_handle_geom_summary_returns_capped_topology_when_requested(monkeypatch) -> None:
+    geometry = FakeGeometry()
+    monkeypatch.setattr(attrib, "connect", FakeConnect(FakeSession({"/obj/geo1/OUT": FakeNode(geometry)})))
+    monkeypatch.setattr(attrib, "localize", lambda value: value)
+
+    result = attrib.handle_geom_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/OUT",
+            topology=True,
+            max_prims=1,
+            max_histogram=10,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["counts"] == {"point": 3, "prim": 2, "vertex": 3}
+    assert result["data"]["prim_types"] == {
+        "count": 1,
+        "cols": ["t", "n"],
+        "rows": [["Polygon", 1]],
+    }
+    assert result["data"]["prim_vertex_counts"] == {
+        "count": 1,
+        "cols": ["v", "n"],
+        "rows": [[2, 1]],
+    }
+    assert result["meta"]["scanned_prims"] == 1
+    assert result["meta"]["scan_truncated"] is True
 
 
 def test_handle_get_sampled_values(monkeypatch) -> None:

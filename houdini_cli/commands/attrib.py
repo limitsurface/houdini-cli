@@ -11,6 +11,9 @@ from ..transport.rpyc import connect, localize, sync_request_timeout
 from .node_common import get_node
 
 DEFAULT_LIMIT = 10
+DEFAULT_ATTRIB_LIMIT = 80
+DEFAULT_HISTOGRAM_LIMIT = 40
+DEFAULT_TOPOLOGY_SCAN_LIMIT = 10000
 VALID_CLASSES = ("point", "prim", "vertex", "detail")
 
 
@@ -27,6 +30,43 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="Filter to one attribute class.",
     )
     list_parser.set_defaults(handler=handle_list)
+
+    summary_parser = attrib_subparsers.add_parser("summary", help="List compact grouped attribute definitions.")
+    summary_parser.add_argument("node_path", help="Geometry-producing node path.")
+    summary_parser.add_argument(
+        "--class",
+        dest="attrib_class",
+        choices=VALID_CLASSES,
+        help="Filter to one attribute class.",
+    )
+    summary_parser.add_argument(
+        "--max-attribs",
+        type=int,
+        default=DEFAULT_ATTRIB_LIMIT,
+        help=f"Maximum attributes to return across groups (default: {DEFAULT_ATTRIB_LIMIT}).",
+    )
+    summary_parser.set_defaults(handler=handle_summary)
+
+    geom_summary_parser = attrib_subparsers.add_parser("geom-summary", help="Summarize cooked geometry element counts.")
+    geom_summary_parser.add_argument("node_path", help="Geometry-producing node path.")
+    geom_summary_parser.add_argument(
+        "--topology",
+        action="store_true",
+        help="Also scan primitive topology for type and vertex-count histograms.",
+    )
+    geom_summary_parser.add_argument(
+        "--max-prims",
+        type=int,
+        default=DEFAULT_TOPOLOGY_SCAN_LIMIT,
+        help=f"Maximum primitives to scan with --topology (default: {DEFAULT_TOPOLOGY_SCAN_LIMIT}).",
+    )
+    geom_summary_parser.add_argument(
+        "--max-histogram",
+        type=int,
+        default=DEFAULT_HISTOGRAM_LIMIT,
+        help=f"Maximum topology histogram rows to return (default: {DEFAULT_HISTOGRAM_LIMIT}).",
+    )
+    geom_summary_parser.set_defaults(handler=handle_geom_summary)
 
     get_parser = attrib_subparsers.add_parser("get", help="Inspect one geometry attribute.")
     get_parser.add_argument("node_path", help="Geometry-producing node path.")
@@ -90,6 +130,76 @@ def _attrib_definition(attrib: Any, attrib_class: str) -> dict:
     if hasattr(attrib, "isArrayType"):
         definition["array"] = bool(attrib.isArrayType())
     return definition
+
+
+def _attrib_flags(attrib: Any) -> str:
+    flags = []
+    if hasattr(attrib, "isArrayType") and bool(attrib.isArrayType()):
+        flags.append("A")
+    return "".join(flags)
+
+
+def _attrib_row(attrib: Any) -> list[Any]:
+    return [str(attrib.name()), int(attrib.size()), _attrib_flags(attrib)]
+
+
+def _grouped_attrib_summary(geometry: Any, classes: list[str], max_attribs: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if max_attribs <= 0:
+        raise ValueError(f"Maximum attributes must be positive: {max_attribs}")
+
+    groups_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    total = 0
+    emitted = 0
+    totals_by_class: dict[str, int] = {}
+
+    for attrib_class in classes:
+        list_name, _ = _class_accessor(attrib_class)
+        attribs = list(getattr(geometry, list_name)())
+        totals_by_class[attrib_class] = len(attribs)
+        total += len(attribs)
+        for attrib in attribs:
+            if emitted >= max_attribs:
+                continue
+            data_type = _normalize_data_type(attrib)
+            key = (attrib_class, data_type)
+            group = groups_by_key.setdefault(
+                key,
+                {
+                    "class": attrib_class,
+                    "type": data_type,
+                    "count": 0,
+                    "cols": ["n", "s", "f"],
+                    "rows": [],
+                },
+            )
+            group["rows"].append(_attrib_row(attrib))
+            group["count"] += 1
+            emitted += 1
+
+    meta = {
+        "limit": max_attribs,
+        "truncated": total > max_attribs,
+        "total": total,
+        "total_by_class": totals_by_class,
+    }
+    return list(groups_by_key.values()), meta
+
+
+def _prim_type_name(prim: Any) -> str:
+    try:
+        prim_type = prim.type()
+        name = prim_type.name() if hasattr(prim_type, "name") else prim_type
+        return str(localize(name))
+    except Exception:
+        return type(prim).__name__
+
+
+def _histogram_rows(counts: dict[Any, int], max_rows: int) -> tuple[list[list[Any]], bool]:
+    if max_rows <= 0:
+        raise ValueError(f"Maximum histogram rows must be positive: {max_rows}")
+    rows = [[key, value] for key, value in counts.items()]
+    rows.sort(key=lambda row: (-int(row[1]), str(row[0])))
+    return rows[:max_rows], len(rows) > max_rows
 
 
 def _get_attrib(geometry: Any, attrib_class: str, attrib_name: str) -> Any:
@@ -187,6 +297,83 @@ def handle_list(args: argparse.Namespace) -> dict:
                 data["classes"][attrib_class] = [_attrib_definition(attrib, attrib_class) for attrib in attribs]
 
             return success_result(data)
+
+
+def handle_summary(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        with sync_request_timeout(session, BROAD_READ_TIMEOUT_SECONDS):
+            node = get_node(session, args.node_path)
+            geometry = _get_geometry(node)
+
+            classes = [args.attrib_class] if args.attrib_class else list(VALID_CLASSES)
+            groups, meta = _grouped_attrib_summary(geometry, classes, args.max_attribs)
+            return success_result(
+                {
+                    "node": args.node_path,
+                    "count": sum(group["count"] for group in groups),
+                    "groups": groups,
+                },
+                meta=meta,
+            )
+
+
+def handle_geom_summary(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        with sync_request_timeout(session, BROAD_READ_TIMEOUT_SECONDS):
+            node = get_node(session, args.node_path)
+            geometry = _get_geometry(node)
+
+            prim_count = _element_count(geometry, "prim")
+            data: dict[str, Any] = {
+                "node": args.node_path,
+                "counts": {
+                    "point": _element_count(geometry, "point"),
+                    "prim": prim_count,
+                    "vertex": _element_count(geometry, "vertex"),
+                },
+            }
+
+            meta: dict[str, Any] | None = None
+            if args.topology:
+                if args.max_prims <= 0:
+                    raise ValueError(f"Maximum primitives to scan must be positive: {args.max_prims}")
+
+                prim_type_counts: dict[str, int] = {}
+                prim_vertex_counts: dict[int, int] = {}
+                scanned_prims = 0
+                for prim in geometry.iterPrims():
+                    if scanned_prims >= args.max_prims:
+                        break
+                    prim_type = _prim_type_name(prim)
+                    prim_type_counts[prim_type] = prim_type_counts.get(prim_type, 0) + 1
+                    vertex_count = len(prim.vertices())
+                    prim_vertex_counts[vertex_count] = prim_vertex_counts.get(vertex_count, 0) + 1
+                    scanned_prims += 1
+
+                prim_type_rows, prim_type_truncated = _histogram_rows(prim_type_counts, args.max_histogram)
+                prim_vertex_rows, prim_vertex_truncated = _histogram_rows(prim_vertex_counts, args.max_histogram)
+
+                data["prim_types"] = {
+                    "count": len(prim_type_counts),
+                    "cols": ["t", "n"],
+                    "rows": prim_type_rows,
+                }
+                data["prim_vertex_counts"] = {
+                    "count": len(prim_vertex_counts),
+                    "cols": ["v", "n"],
+                    "rows": prim_vertex_rows,
+                }
+                meta = {
+                    "topology": True,
+                    "max_prims": args.max_prims,
+                    "scanned_prims": scanned_prims,
+                    "scan_truncated": prim_count > scanned_prims,
+                    "max_histogram": args.max_histogram,
+                    "prim_types_truncated": prim_type_truncated,
+                    "prim_vertex_counts_truncated": prim_vertex_truncated,
+                }
+
+            return success_result(data, meta=meta)
 
 
 def handle_get(args: argparse.Namespace) -> dict:

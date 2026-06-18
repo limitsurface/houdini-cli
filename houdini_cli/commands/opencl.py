@@ -105,17 +105,20 @@ def _binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
         values[f"{prefix}layertype"] = str(_binding_scalar(binding, "layertype"))
         values[f"{prefix}layerborder"] = str(_binding_scalar(binding, "layerborder"))
     elif binding_type == "attribute":
+        values[f"{prefix}input"] = int(_binding_scalar(binding, "input"))
         values[f"{prefix}attribute"] = str(_binding_scalar(binding, "attribute"))
         values[f"{prefix}attribclass"] = str(_binding_scalar(binding, "attribclass"))
         values[f"{prefix}attribtype"] = str(_binding_scalar(binding, "attribtype"))
         values[f"{prefix}attribsize"] = int(_binding_scalar(binding, "attribsize"))
     elif binding_type == "volume":
+        values[f"{prefix}input"] = int(_binding_scalar(binding, "input"))
         values[f"{prefix}volume"] = str(_binding_scalar(binding, "volume"))
         values[f"{prefix}resolution"] = bool(_binding_scalar(binding, "resolution"))
         values[f"{prefix}voxelsize"] = bool(_binding_scalar(binding, "voxelsize"))
         values[f"{prefix}xformtoworld"] = bool(_binding_scalar(binding, "xformtoworld"))
         values[f"{prefix}xformtovoxel"] = bool(_binding_scalar(binding, "xformtovoxel"))
     elif binding_type == "vdb":
+        values[f"{prefix}input"] = int(_binding_scalar(binding, "input"))
         values[f"{prefix}volume"] = str(_binding_scalar(binding, "volume"))
         values[f"{prefix}vdbtype"] = str(_binding_scalar(binding, "vdbtype"))
     elif binding_type == "int":
@@ -425,14 +428,28 @@ def _compact_binding_rows(bindings: list[Any]) -> list[list[Any]]:
     return rows
 
 
+def _compact_binding_row_summaries(rows: list[dict[str, Any]]) -> list[list[Any]]:
+    result = []
+    for row in rows:
+        binding_type = str(row["type"])
+        direction = "parm" if binding_type in _SPARE_PARM_BINDING_TYPES else "input"
+        result.append([str(row["name"]), binding_type, direction])
+    return result
+
+
 def _compact_validation(validation: dict[str, Any], bindings: list[Any]) -> dict[str, Any]:
+    binding_rows = (
+        _compact_binding_rows(bindings)
+        if bindings
+        else _compact_binding_row_summaries(validation.get("current_bindings", []))
+    )
     result = {
         "node_path": validation["node_path"],
         "context": validation.get("context", "cop"),
         "runover": validation.get("runover", ""),
         "binding_count": validation["binding_count"],
         "binding_cols": ["name", "type", "direction"],
-        "bindings": _compact_binding_rows(bindings),
+        "bindings": binding_rows,
         "clean": bool(validation["ok"]),
         "sync_required": bool(validation.get("sync_required", False)),
         "invalid_connection_count": validation.get("invalid_connection_count", 0),
@@ -654,6 +671,18 @@ def _desired_binding_row_summary(bindings: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _desired_or_current_binding_row_summary(opencl_node: Any, bindings: list[Any]) -> list[dict[str, Any]]:
+    if bindings:
+        return _desired_binding_row_summary(bindings)
+    return _binding_row_summary(opencl_node)
+
+
+def _desired_or_current_dop_binding_row_summary(opencl_node: Any, bindings: list[Any]) -> list[dict[str, Any]]:
+    if bindings:
+        return _desired_binding_row_summary(bindings)
+    return _dop_binding_row_summary(opencl_node)
+
+
 def _dop_binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
     prefix = f"parameter{index}"
     binding_type = str(_binding_scalar(binding, "type"))
@@ -793,8 +822,8 @@ def _validation_summary(
 ) -> dict[str, Any]:
     _safe_cook(opencl_node)
     if _is_dop_opencl(opencl_node):
-        desired_rows = _desired_binding_row_summary(bindings)
         current_rows = _dop_binding_row_summary(opencl_node)
+        desired_rows = _desired_or_current_dop_binding_row_summary(opencl_node, bindings)
         bindings_match_kernel = current_rows == desired_rows
         messages = _node_messages(opencl_node)
         hints: list[str] = []
@@ -807,7 +836,7 @@ def _validation_summary(
             "node_path": localize(opencl_node.path()),
             "context": "dop",
             "runover": runover,
-            "binding_count": len(bindings),
+            "binding_count": len(desired_rows),
             "bindings_match_kernel": bindings_match_kernel,
             "signature_matches_kernel": None,
             "sync_required": not bindings_match_kernel,
@@ -826,8 +855,8 @@ def _validation_summary(
         }
 
     if _is_sop_opencl(opencl_node):
-        desired_rows = _desired_binding_row_summary(bindings)
         current_rows = _binding_row_summary(opencl_node)
+        desired_rows = _desired_or_current_binding_row_summary(opencl_node, bindings)
         bindings_match_kernel = current_rows == desired_rows
         messages = _node_messages(opencl_node)
         hints: list[str] = []
@@ -840,7 +869,7 @@ def _validation_summary(
             "node_path": localize(opencl_node.path()),
             "context": "sop",
             "runover": runover,
-            "binding_count": len(bindings),
+            "binding_count": len(desired_rows),
             "bindings_match_kernel": bindings_match_kernel,
             "signature_matches_kernel": None,
             "sync_required": not bindings_match_kernel,
