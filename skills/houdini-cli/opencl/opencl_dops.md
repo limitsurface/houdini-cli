@@ -223,6 +223,6 @@ If Use Code Snippet is disabled, inspect `kernelfile` and `kernelname`.
 
 ## References
 
-- `help_prepared/nodes/dop/gasopencl.txt`
-- `help_prepared/vex/ocl.txt`
+- `../help_prepared/nodes/dop/gasopencl.txt`
+- `../help_prepared/vex/ocl.txt`
 - Installed OpenCL files under `$HFS/houdini/ocl/`

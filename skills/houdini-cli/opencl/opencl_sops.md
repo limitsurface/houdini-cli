@@ -292,7 +292,7 @@ houdini-cli attrib get <node-path> P --class point --limit 5
 
 ## References
 
-- `help_prepared/nodes/sop/opencl.txt`
-- `help_prepared/vex/ocl.txt`
+- `../help_prepared/nodes/sop/opencl.txt`
+- `../help_prepared/vex/ocl.txt`
 - `../copernicus/copernicus.md` for Copernicus-specific bindings and coordinates
 - Installed OpenCL files under `$HFS/houdini/ocl/`
