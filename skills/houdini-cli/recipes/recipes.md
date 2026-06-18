@@ -46,12 +46,12 @@ library outside the recipe command surface.
 ## Local Houdini References
 
 - Recipe overview and categories:
-  `skills/houdini-cli/help_prepared/network/recipes.txt`
+  `../help_prepared/network/recipes.txt`
 - Recipe scripting, application contexts, and pre/post scripts:
-  `skills/houdini-cli/help_prepared/network/recipe_scripting.txt`
+  `../help_prepared/network/recipe_scripting.txt`
 - Recipe Builder:
-  `skills/houdini-cli/help_prepared/network/recipe_builder.txt`
+  `../help_prepared/network/recipe_builder.txt`
 - Declarative recipe data format:
-  `skills/houdini-cli/help_prepared/network/recipe_format.txt`
+  `../help_prepared/network/recipe_format.txt`
 - HOM recipe save, apply, and inspection functions:
-  `skills/houdini-cli/help_prepared/hom/hou/data.txt`
+  `../help_prepared/hom/hou/data.txt`
