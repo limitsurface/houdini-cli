@@ -317,7 +317,14 @@ def handle_get(args: argparse.Namespace) -> dict:
                 }
             )
         if args.section == "references":
-            return success_result(_reference_payload(node, external_only=args.external_only))
+            return success_result(
+                _reference_payload_in_houdini(
+                    session,
+                    args.node_path,
+                    fallback_root=node,
+                    external_only=args.external_only,
+                )
+            )
         if args.section == "full":
             return success_result(
                 {
@@ -391,6 +398,93 @@ def _reference_payload(root: Any, *, external_only: bool) -> dict[str, Any]:
             "input_references": len(input_rows),
         },
     }
+
+
+def _reference_payload_in_houdini(
+    session: Any,
+    root_path: str,
+    *,
+    fallback_root: Any,
+    external_only: bool,
+) -> dict[str, Any]:
+    connection = getattr(session, "connection", None)
+    if not callable(getattr(connection, "execute", None)) or not callable(getattr(connection, "eval", None)):
+        return _reference_payload(fallback_root, external_only=external_only)
+
+    source = r"""
+import hou
+
+def _houdini_cli_node_reference_payload(root_path, external_only):
+    root = hou.node(root_path)
+    if root is None:
+        raise ValueError("Node not found: " + root_path)
+
+    def is_within_root(path):
+        return path == root_path or path.startswith(root_path.rstrip("/") + "/")
+
+    def connection_payload(connection):
+        source = connection.inputNode()
+        dest = connection.outputNode()
+        return {
+            "from_path": source.path() if source is not None else None,
+            "from_output_index": int(connection.outputIndex()),
+            "from_output_name": connection.inputName(),
+            "from_output_label": connection.inputLabel(),
+            "to_path": dest.path() if dest is not None else None,
+            "to_input_index": int(connection.inputIndex()),
+            "to_input_name": connection.outputName(),
+            "to_input_label": connection.outputLabel(),
+        }
+
+    nodes = [root] + list(root.allSubChildren())
+    parm_rows = []
+    input_rows = []
+    for node in nodes:
+        for parameter in node.parms():
+            try:
+                targets = list(parameter.references())
+            except Exception:
+                continue
+            for target in targets:
+                target_path = target.path()
+                target_node_path = target_path.rsplit("/", 1)[0]
+                external = not is_within_root(target_node_path)
+                if external_only and not external:
+                    continue
+                parm_rows.append(
+                    {
+                        "from_parm": parameter.path(),
+                        "to_parm": target_path,
+                        "external": external,
+                    }
+                )
+
+        for connection in node.inputConnections():
+            source = connection.inputNode()
+            if source is None:
+                continue
+            source_path = source.path()
+            external = not is_within_root(source_path)
+            if external_only and not external:
+                continue
+            input_rows.append({**connection_payload(connection), "external": external})
+
+    return {
+        "node_path": root_path,
+        "section": "references",
+        "external_only": external_only,
+        "parameter_references": parm_rows,
+        "input_references": input_rows,
+        "counts": {
+            "parameter_references": len(parm_rows),
+            "input_references": len(input_rows),
+        },
+    }
+"""
+    connection.execute(source)
+    return localize(
+        connection.eval(f"_houdini_cli_node_reference_payload({root_path!r}, {bool(external_only)!r})")
+    )
 
 
 def _node_messages(node: Any) -> dict[str, list[str]]:
