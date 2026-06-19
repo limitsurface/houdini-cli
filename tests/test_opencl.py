@@ -42,8 +42,13 @@ class FakeOpenclNode:
         self._parms = {
             "kernelcode": self.kernel_parm,
             "options_runover": self.runover_parm,
-            "inputs": FakeParm(0),
-            "outputs": FakeParm(0),
+            "inputs": FakeParm(1),
+            "input1_name": FakeParm("src"),
+            "input1_type": FakeParm("floatn"),
+            "input1_optional": FakeParm(True),
+            "outputs": FakeParm(1),
+            "output1_name": FakeParm("dst"),
+            "output1_type": FakeParm("floatn"),
             "bindings": FakeParm(0),
         }
 
@@ -759,6 +764,17 @@ def test_handle_validate_reports_signature_drift_and_invalid_connection(monkeypa
         ],
         "outputs": [{"output#_name": "dst", "output#_type": "floatn"}],
     }
+    node_obj._parms.update(
+        {
+            "inputs": FakeParm(2),
+            "input1_name": FakeParm("src"),
+            "input1_type": FakeParm("floatn"),
+            "input1_optional": FakeParm(False),
+            "input2_name": FakeParm("light"),
+            "input2_type": FakeParm("floatn"),
+            "input2_optional": FakeParm(False),
+        }
+    )
     node_obj._input_data_types = ["Mono", "Geometry"]
     mono_src = FakeSourceNode("/obj/cops/light_alpha", ["Mono"])
     node_obj._input_connections = [
@@ -932,6 +948,8 @@ def test_existing_signature_unwraps_parms_as_data_values(monkeypatch) -> None:
         ],
         "outputs": [{"output#_name": {"value": "dst"}, "output#_type": {"value": "floatn"}}],
     }
+    node_obj._parms.pop("inputs")
+    node_obj._parms.pop("outputs")
     monkeypatch.setattr(opencl, "localize", lambda value: value)
 
     assert opencl._existing_signature_entries(node_obj, output=False) == [

@@ -374,6 +374,40 @@ def _port_signature_entries(bindings: list[Any], *, output: bool) -> list[dict[s
 
 
 def _existing_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[str, Any]]:
+    count_parm = opencl_node.parm("outputs" if output else "inputs")
+    if count_parm is not None:
+        try:
+            count = int(count_parm.eval())
+        except Exception:
+            count = 0
+        result = []
+        for index in range(1, count + 1):
+            prefix = "output" if output else "input"
+            name_parm = opencl_node.parm(f"{prefix}{index}_name")
+            type_parm = opencl_node.parm(f"{prefix}{index}_type")
+            if name_parm is None or type_parm is None:
+                continue
+            try:
+                name = str(name_parm.evalAsString())
+                signature_type = str(type_parm.evalAsString() or "floatn")
+            except Exception:
+                continue
+            if not name:
+                continue
+            entry: dict[str, Any] = {
+                "name": name,
+                "type": signature_type,
+                "optional": False,
+            }
+            if not output:
+                optional_parm = opencl_node.parm(f"input{index}_optional")
+                try:
+                    entry["optional"] = bool(optional_parm.eval()) if optional_parm is not None else False
+                except Exception:
+                    entry["optional"] = False
+            result.append(entry)
+        return result
+
     try:
         data = localize(opencl_node.parmsAsData(brief=False))
     except Exception:
@@ -634,6 +668,151 @@ def _binding_row_hints(opencl_node: Any) -> list[str]:
     return hints
 
 
+def _cop_validation_state_in_houdini(session: Any, node_path: str) -> dict[str, Any] | None:
+    connection = getattr(session, "connection", None)
+    if not callable(getattr(connection, "execute", None)) or not callable(getattr(connection, "eval", None)):
+        return None
+
+    source = r"""
+import hou
+
+SPARE_PARM_BINDING_TYPES = {"int", "float", "float2", "float3", "float4"}
+
+def _houdini_cli_opencl_parm_expression(parm):
+    if parm is None:
+        return None
+    try:
+        return str(parm.expression())
+    except Exception:
+        return None
+
+def _houdini_cli_opencl_binding_value_parm_names(index, binding_type):
+    prefix = "bindings{}_".format(index)
+    if binding_type == "int":
+        return [(prefix + "intval", ("",))]
+    if binding_type == "float":
+        return [(prefix + "fval", ("",))]
+    if binding_type == "float2":
+        return [(prefix + "v2val{}".format(component), (str(component), "xy"[component - 1])) for component in range(1, 3)]
+    if binding_type == "float3":
+        return [(prefix + "v3val{}".format(component), (str(component), "xyz"[component - 1])) for component in range(1, 4)]
+    if binding_type == "float4":
+        return [(prefix + "v4val{}".format(component), (str(component), "xyzw"[component - 1])) for component in range(1, 5)]
+    return []
+
+def _houdini_cli_opencl_signature_entries(node, output):
+    count_parm = node.parm("outputs" if output else "inputs")
+    count = int(count_parm.eval()) if count_parm is not None else 0
+    rows = []
+    for index in range(1, count + 1):
+        prefix = "output" if output else "input"
+        name_parm = node.parm("{}{}_name".format(prefix, index))
+        type_parm = node.parm("{}{}_type".format(prefix, index))
+        if name_parm is None or type_parm is None:
+            continue
+        name = str(name_parm.evalAsString())
+        if not name:
+            continue
+        row = {
+            "name": name,
+            "type": str(type_parm.evalAsString() or "floatn"),
+            "optional": False,
+        }
+        if not output:
+            optional_parm = node.parm("input{}_optional".format(index))
+            row["optional"] = bool(optional_parm.eval()) if optional_parm is not None else False
+        rows.append(row)
+    return rows
+
+def _houdini_cli_opencl_binding_hints(node):
+    bindings_parm = node.parm("bindings")
+    if bindings_parm is None:
+        return []
+    try:
+        binding_count = int(bindings_parm.eval())
+    except Exception:
+        return []
+
+    hints = []
+    layer_rows = []
+    static_rows = []
+    for index in range(1, binding_count + 1):
+        name_parm = node.parm("bindings{}_name".format(index))
+        type_parm = node.parm("bindings{}_type".format(index))
+        if name_parm is None or type_parm is None:
+            continue
+        try:
+            name = str(name_parm.evalAsString())
+            binding_type = str(type_parm.evalAsString())
+        except Exception:
+            continue
+
+        if binding_type == "layer":
+            layer_rows.append(name)
+            continue
+        if binding_type not in SPARE_PARM_BINDING_TYPES:
+            continue
+
+        expected = 'ch("./{}")'.format(name)
+        for parm_name, component_suffixes in _houdini_cli_opencl_binding_value_parm_names(index, binding_type):
+            expr = _houdini_cli_opencl_parm_expression(node.parm(parm_name))
+            expected_exprs = {
+                expected if not component_suffix else 'ch("./{}{}")'.format(name, component_suffix)
+                for component_suffix in component_suffixes
+            }
+            if expr not in expected_exprs:
+                static_rows.append(name)
+                break
+
+    if layer_rows:
+        hints.append(
+            "OpenCL binding rows include layer bindings "
+            + "({}); layer bindings should live in Signature inputs/outputs. ".format(", ".join(layer_rows))
+            + "Try: houdini-cli opencl sync {}".format(node.path())
+        )
+    if static_rows:
+        hints.append(
+            "OpenCL parm binding rows are not linked to generated spare parms "
+            + "({}); UI changes may not affect the kernel. ".format(", ".join(static_rows))
+            + "Try: houdini-cli opencl sync {}".format(node.path())
+        )
+    return hints
+
+def _houdini_cli_opencl_cop_validation_state(node_path):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+
+    connections = {}
+    for connection in node.inputConnections():
+        source_node = connection.inputNode()
+        output_index = int(connection.outputIndex())
+        source_types = list(source_node.outputDataTypes()) if source_node is not None else []
+        source_output_type = source_types[output_index] if 0 <= output_index < len(source_types) else None
+        connections[int(connection.inputIndex())] = {
+            "from_path": str(source_node.path()) if source_node is not None else None,
+            "from_output_index": output_index,
+            "from_output_name": str(connection.outputName()),
+            "source_output_type": source_output_type,
+        }
+
+    return {
+        "current_inputs": _houdini_cli_opencl_signature_entries(node, False),
+        "current_outputs": _houdini_cli_opencl_signature_entries(node, True),
+        "input_types": [str(value) for value in node.inputDataTypes()],
+        "connections": connections,
+        "errors": [str(value) for value in node.errors()],
+        "warnings": [str(value) for value in node.warnings()],
+        "messages": [str(value) for value in node.messages()],
+        "hints": _houdini_cli_opencl_binding_hints(node),
+    }
+"""
+    connection.execute(source)
+    return localize(
+        connection.eval(f"_houdini_cli_opencl_cop_validation_state({node_path!r})")
+    )
+
+
 def _binding_row_summary(opencl_node: Any) -> list[dict[str, Any]]:
     bindings_parm = opencl_node.parm("bindings")
     if bindings_parm is None:
@@ -819,8 +998,10 @@ def _validation_summary(
     *,
     bindings: list[Any],
     runover: str,
+    current_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    _safe_cook(opencl_node)
+    if current_state is None:
+        _safe_cook(opencl_node)
     if _is_dop_opencl(opencl_node):
         current_rows = _dop_binding_row_summary(opencl_node)
         desired_rows = _desired_or_current_dop_binding_row_summary(opencl_node, bindings)
@@ -889,10 +1070,24 @@ def _validation_summary(
 
     desired_inputs = _port_signature_entries(bindings, output=False)
     desired_outputs = _port_signature_entries(bindings, output=True)
-    current_inputs = _summary_signature_entries(opencl_node, output=False)
-    current_outputs = _summary_signature_entries(opencl_node, output=True)
-    input_types = _input_data_types(opencl_node)
-    connections = _current_input_connections(opencl_node)
+    if current_state is None:
+        current_inputs = _summary_signature_entries(opencl_node, output=False)
+        current_outputs = _summary_signature_entries(opencl_node, output=True)
+        input_types = _input_data_types(opencl_node)
+        connections = _current_input_connections(opencl_node)
+        messages = _node_messages(opencl_node)
+        hints = _binding_row_hints(opencl_node)
+    else:
+        current_inputs = current_state["current_inputs"]
+        current_outputs = current_state["current_outputs"]
+        input_types = current_state["input_types"]
+        connections = {int(key): value for key, value in current_state["connections"].items()}
+        messages = {
+            "errors": current_state["errors"],
+            "warnings": current_state["warnings"],
+            "messages": current_state["messages"],
+        }
+        hints = list(current_state["hints"])
 
     input_rows: list[dict[str, Any]] = []
     invalid_connection_count = 0
@@ -930,8 +1125,6 @@ def _validation_summary(
     desired_input_rows = [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in desired_inputs]
     desired_output_rows = [{"name": entry["name"], "type": entry["type"]} for entry in desired_outputs]
     signature_matches_kernel = current_inputs == desired_input_rows and current_outputs == desired_output_rows
-    messages = _node_messages(opencl_node)
-    hints = _binding_row_hints(opencl_node)
     if not signature_matches_kernel:
         hints.append(f"OpenCL signature differs from kernel #bind directives. Try: houdini-cli opencl sync {localize(opencl_node.path())}")
 
@@ -1133,7 +1326,18 @@ def handle_validate(args: argparse.Namespace) -> dict:
         kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
         bindings = list(session.hou.text.oclExtractBindings(kernel_code))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
-        validation = _validation_summary(opencl_node, bindings=bindings, runover=runover)
+        _safe_cook(opencl_node)
+        current_state = (
+            _cop_validation_state_in_houdini(session, args.node_path)
+            if not _is_sop_opencl(opencl_node) and not _is_dop_opencl(opencl_node)
+            else None
+        )
+        validation = _validation_summary(
+            opencl_node,
+            bindings=bindings,
+            runover=runover,
+            current_state=current_state,
+        )
         if getattr(args, "details", False):
             return success_result(validation)
         return success_result(_compact_validation(validation, bindings))
