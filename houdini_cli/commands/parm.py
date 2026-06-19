@@ -111,6 +111,11 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
         action="store_true",
         help="Do not truncate long string parameter values.",
     )
+    list_parser.add_argument(
+        "--values",
+        action="store_true",
+        help="Include parameter values and default flags. Kept for compatibility; values are always returned.",
+    )
     list_parser.set_defaults(handler=handle_node_parms_list)
 
     find_parser = parms_subparsers.add_parser("find", help="Search parameters on one node.")
@@ -123,6 +128,11 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
         "--full-values",
         action="store_true",
         help="Do not truncate long string parameter values.",
+    )
+    find_parser.add_argument(
+        "--values",
+        action="store_true",
+        help="Include parameter values and default flags. Kept for compatibility; values are always returned.",
     )
     find_parser.set_defaults(handler=handle_node_parms_find)
 
@@ -687,14 +697,99 @@ def _matches_parm(parm: Any, *, name: str | None, parm_type: str | None, non_def
     return True
 
 
+def _node_parm_rows_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    name: str | None,
+    parm_type: str | None,
+    non_default: bool,
+    full_values: bool,
+    max_parms: int,
+) -> list[list[Any]]:
+    if not hasattr(session, "connection"):
+        node = _get_node(session, node_path)
+        return [
+            _parm_row(parm, full_values=full_values)
+            for parm in _iter_discoverable_parms(node)
+            if _matches_parm(parm, name=name, parm_type=parm_type, non_default=non_default)
+        ][:max_parms]
+
+    source = r"""
+import hou
+
+SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
+
+def _houdini_cli_parm_rows(node_path, name, parm_type, non_default, full_values, max_parms):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+
+    needle = name.lower() if name else None
+    rows = []
+    seen = set()
+    for parm in node.parms():
+        template = parm.parmTemplate()
+        template_type = template.type().name()
+        if template_type in SKIPPED_TEMPLATE_TYPES:
+            continue
+
+        members = list(parm.tuple())
+        display_name = parm.tuple().name() if len(members) > 1 else parm.name()
+        key = members[0].path() if len(members) > 1 else parm.path()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        tuple_type = "{}{}".format(template_type, len(members)) if len(members) > 1 else template_type
+        if parm_type and tuple_type != parm_type:
+            continue
+
+        flag = ""
+        is_default = all(item.isAtDefault() for item in members)
+        if non_default and is_default:
+            continue
+        flag = "" if is_default else "n"
+
+        if needle:
+            names = [display_name] + [item.name() for item in members]
+            lowered = [item.lower() for item in names]
+            exact = any(item == needle for item in lowered)
+            prefix = any(item.startswith(needle) for item in lowered)
+            partial = len(needle) >= 3 and any(needle in item for item in lowered)
+            if not (exact or prefix or partial):
+                continue
+
+        value = parm.valueAsData()
+        if not full_values and isinstance(value, str) and len(value) > 120:
+            value = value[:117] + "..."
+
+        rows.append([display_name, tuple_type, value, flag])
+        if len(rows) >= max_parms:
+            break
+    return rows
+"""
+    session.connection.execute(source)
+    return localize(
+        session.connection.eval(
+            "_houdini_cli_parm_rows("
+            f"{node_path!r}, {name!r}, {parm_type!r}, {bool(non_default)!r}, "
+            f"{bool(full_values)!r}, {int(max_parms)!r})"
+        )
+    )
+
+
 def handle_node_parms_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = _get_node(session, args.node_path)
-        rows = [
-            _parm_row(parm, full_values=getattr(args, "full_values", False))
-            for parm in _iter_discoverable_parms(node)
-            if _matches_parm(parm, name=None, parm_type=None, non_default=args.non_default)
-        ][: args.max_parms]
+        rows = _node_parm_rows_in_houdini(
+            session,
+            args.node_path,
+            name=None,
+            parm_type=None,
+            non_default=args.non_default,
+            full_values=getattr(args, "full_values", False),
+            max_parms=args.max_parms,
+        )
         return success_result(
             {
                 "node": args.node_path,
@@ -707,12 +802,15 @@ def handle_node_parms_list(args: argparse.Namespace) -> dict:
 
 def handle_node_parms_find(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = _get_node(session, args.node_path)
-        rows = [
-            _parm_row(parm, full_values=getattr(args, "full_values", False))
-            for parm in _iter_discoverable_parms(node)
-            if _matches_parm(parm, name=args.name, parm_type=args.parm_type, non_default=args.non_default)
-        ][: args.max_parms]
+        rows = _node_parm_rows_in_houdini(
+            session,
+            args.node_path,
+            name=args.name,
+            parm_type=args.parm_type,
+            non_default=args.non_default,
+            full_values=getattr(args, "full_values", False),
+            max_parms=args.max_parms,
+        )
         return success_result(
             {
                 "node": args.node_path,

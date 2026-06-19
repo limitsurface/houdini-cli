@@ -123,17 +123,18 @@ class FakeConnection:
     def __init__(self):
         self.executed = None
         self.evaluated = None
+        self.eval_result = {
+            "template_name": "processing_scale",
+            "default": (0.75,),
+            "library": "test.hda",
+        }
 
     def execute(self, source):
         self.executed = source
 
     def eval(self, expression):
         self.evaluated = expression
-        return {
-            "template_name": "processing_scale",
-            "default": (0.75,),
-            "library": "test.hda",
-        }
+        return self.eval_result
 
 
 class FakeConnect:
@@ -322,7 +323,7 @@ def test_handle_node_parms_list(monkeypatch) -> None:
     monkeypatch.setattr(parm, "localize", lambda value: value)
 
     result = parm.handle_node_parms_list(
-        Namespace(host="localhost", port=18811, node_path="/obj/x", non_default=False, max_parms=10)
+        Namespace(host="localhost", port=18811, node_path="/obj/x", non_default=False, max_parms=10, values=True)
     )
     assert result["ok"] is True
     assert result["data"]["cols"] == ["p", "t", "v", "f"]
@@ -360,6 +361,7 @@ def test_handle_node_parms_find(monkeypatch) -> None:
             parm_type=None,
             non_default=True,
             max_parms=10,
+            values=True,
         )
     )
     assert result["ok"] is True
@@ -386,6 +388,7 @@ def test_handle_node_parms_find_matches_tuple_component_names(monkeypatch) -> No
             parm_type=None,
             non_default=False,
             max_parms=10,
+            values=True,
         )
     )
     assert result["ok"] is True
@@ -408,6 +411,7 @@ def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None
             non_default=False,
             max_parms=10,
             full_values=False,
+            values=True,
         )
     )
     full = parm.handle_node_parms_list(
@@ -418,6 +422,7 @@ def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None
             non_default=False,
             max_parms=10,
             full_values=True,
+            values=True,
         )
     )
 
