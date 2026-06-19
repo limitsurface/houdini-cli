@@ -44,6 +44,41 @@ def parm_tree(entries: Any) -> list[dict[str, Any]]:
     return result
 
 
+def parm_tree_in_houdini(session: Any, node_path: str) -> list[dict[str, Any]]:
+    if not hasattr(session, "connection"):
+        definition = definition_for_node(session.node(node_path))
+        return parm_tree(definition.parmTemplateGroup().entries())
+
+    source = r"""
+import hou
+
+def _houdini_cli_hda_parm_tree(node_path):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    definition = node.type().definition()
+    if definition is None:
+        raise ValueError("Node is not an HDA instance: " + node_path)
+
+    def walk(entries):
+        rows = []
+        for template in entries:
+            row = {
+                "name": template.name(),
+                "label": template.label(),
+                "type": template.type().name(),
+            }
+            if hasattr(template, "parmTemplates"):
+                row["children"] = walk(template.parmTemplates())
+            rows.append(row)
+        return rows
+
+    return walk(definition.parmTemplateGroup().entries())
+"""
+    session.connection.execute(source)
+    return localize(session.connection.eval(f"_houdini_cli_hda_parm_tree({node_path!r})"))
+
+
 def definition_summary(session: Any, definition: Any) -> dict[str, Any]:
     node_type = definition.nodeType()
     type_name = localize(node_type.name())
@@ -64,4 +99,3 @@ def definition_summary(session: Any, definition: Any) -> dict[str, Any]:
             for name, section in definition.sections().items()
         ],
     }
-

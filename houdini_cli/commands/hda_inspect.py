@@ -7,7 +7,7 @@ from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
-from .hda_common import definition_for_node, definition_summary, parm_tree
+from .hda_common import definition_for_node, definition_summary, parm_tree_in_houdini
 from .node_common import get_node, node_summary
 
 
@@ -22,7 +22,7 @@ def handle_inspect(args: argparse.Namespace) -> dict:
             "matches": bool(localize(node.matchesCurrentDefinition())),
         }
         if args.parms:
-            data["parms"] = parm_tree(definition.parmTemplateGroup().entries())
+            data["parms"] = parm_tree_in_houdini(session, args.asset_node)
         if args.sections:
             data["section_names"] = [localize(name) for name in definition.sections().keys()]
         if args.tools:
@@ -76,4 +76,3 @@ def handle_libraries(args: argparse.Namespace) -> dict:
                 types = []
             rows.append({"path": path, "definition_count": len(types), "types": types})
         return success_result({"count": len(rows), "libraries": rows})
-

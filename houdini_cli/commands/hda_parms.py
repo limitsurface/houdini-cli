@@ -8,7 +8,7 @@ from typing import Any
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from ..util.input import read_json_input
-from .hda_common import definition_for_node, parm_tree, save_definition
+from .hda_common import definition_for_node, parm_tree_in_houdini, save_definition
 from .node_common import get_node
 
 _FOLDER_TYPES = {
@@ -32,17 +32,16 @@ _COLOR_TYPES = {"rgb": "RGB", "hsv": "HSV", "hsl": "HSL", "lab": "LAB", "xyz": "
 def handle_parms_inspect(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = get_node(session, args.asset_node)
-        definition = definition_for_node(node)
         if getattr(args, "tree", False):
             return success_result(
                 {
                     "asset_node": args.asset_node,
-                    "parms": parm_tree(definition.parmTemplateGroup().entries()),
+                    "parms": parm_tree_in_houdini(session, args.asset_node),
                 }
             )
-        rows = _flat_parm_rows(
-            node,
-            definition.parmTemplateGroup().entries(),
+        rows = _flat_parm_rows_in_houdini(
+            session,
+            args.asset_node,
             folder_filter=getattr(args, "folder", None),
             name_filter=getattr(args, "name", None),
             include_values=getattr(args, "values", False),
@@ -133,10 +132,128 @@ def _folder_rows(entries: Any, parents: tuple[str, ...] = ()) -> list[list[Any]]
     return rows
 
 
+def _flat_parm_rows_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    folder_filter: str | None = None,
+    name_filter: str | None = None,
+    include_values: bool = False,
+    include_defaults: bool = False,
+) -> list[list[Any]]:
+    if not hasattr(session, "connection"):
+        node = get_node(session, node_path)
+        definition = definition_for_node(node)
+        return _flat_parm_rows(
+            node,
+            definition.parmTemplateGroup().entries(),
+            folder_filter=folder_filter,
+            name_filter=name_filter,
+            include_values=include_values,
+            include_defaults=include_defaults,
+        )
+
+    source = r"""
+import hou
+
+SKIPPED_HDA_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
+
+def _houdini_cli_template_default(template):
+    method = getattr(template, "defaultValue", None)
+    if not callable(method):
+        return None
+    try:
+        return method()
+    except Exception:
+        return None
+
+def _houdini_cli_hda_flat_rows(node_path, folder_filter, name_filter, include_values, include_defaults):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    definition = node.type().definition()
+    if definition is None:
+        raise ValueError("Node is not an HDA instance: " + node_path)
+
+    folder_needle = folder_filter.lower() if folder_filter else None
+    name_needle = name_filter.lower() if name_filter else None
+
+    def walk(entries, parents=()):
+        rows = []
+        for template in entries:
+            name = template.name()
+            label = template.label()
+            type_name = template.type().name()
+            if type_name in {"Folder", "FolderSet"}:
+                rows.extend(walk(template.parmTemplates(), parents + (label,)))
+                continue
+            if type_name in SKIPPED_HDA_TEMPLATE_TYPES:
+                continue
+
+            folder_path = "/".join(parents)
+            if folder_needle and folder_needle not in folder_path.lower():
+                continue
+            if name_needle and name_needle not in name.lower() and name_needle not in label.lower():
+                continue
+
+            row = [name, label, type_name, folder_path]
+            if include_values:
+                parm = node.parm(name)
+                row.append(parm.eval() if parm is not None else None)
+            if include_defaults:
+                row.append(_houdini_cli_template_default(template))
+            rows.append(row)
+        return rows
+
+    return walk(definition.parmTemplateGroup().entries())
+"""
+    session.connection.execute(source)
+    return localize(
+        session.connection.eval(
+            "_houdini_cli_hda_flat_rows("
+            f"{node_path!r}, {folder_filter!r}, {name_filter!r}, "
+            f"{bool(include_values)!r}, {bool(include_defaults)!r})"
+        )
+    )
+
+
+def _folder_rows_in_houdini(session: Any, node_path: str) -> list[list[Any]]:
+    if not hasattr(session, "connection"):
+        definition = definition_for_node(get_node(session, node_path))
+        return _folder_rows(definition.parmTemplateGroup().entries())
+
+    source = r"""
+import hou
+
+def _houdini_cli_hda_folder_rows(node_path):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    definition = node.type().definition()
+    if definition is None:
+        raise ValueError("Node is not an HDA instance: " + node_path)
+
+    def walk(entries, parents=()):
+        rows = []
+        for template in entries:
+            if template.type().name() not in {"Folder", "FolderSet"}:
+                continue
+            label = template.label()
+            path = "/".join(parents + (label,))
+            children = list(template.parmTemplates())
+            rows.append([template.name(), label, path, len(children)])
+            rows.extend(walk(children, parents + (label,)))
+        return rows
+
+    return walk(definition.parmTemplateGroup().entries())
+"""
+    session.connection.execute(source)
+    return localize(session.connection.eval(f"_houdini_cli_hda_folder_rows({node_path!r})"))
+
+
 def handle_parms_folders(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        definition = definition_for_node(get_node(session, args.asset_node))
-        rows = _folder_rows(definition.parmTemplateGroup().entries())
+        rows = _folder_rows_in_houdini(session, args.asset_node)
         return success_result(
             {
                 "asset_node": args.asset_node,
@@ -149,11 +266,10 @@ def handle_parms_folders(args: argparse.Namespace) -> dict:
 
 def handle_parms_locate(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
-        node = get_node(session, args.asset_node)
-        definition = definition_for_node(node)
-        rows = _flat_parm_rows(
-            node,
-            definition.parmTemplateGroup().entries(),
+        get_node(session, args.asset_node)
+        rows = _flat_parm_rows_in_houdini(
+            session,
+            args.asset_node,
             name_filter=args.parm_name,
             include_values=True,
             include_defaults=True,

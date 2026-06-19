@@ -2,6 +2,7 @@ docs/
 build/
 dist/
 live_query_dumps/
+work/
 .venv/
 __pycache__/
 *.pyc
