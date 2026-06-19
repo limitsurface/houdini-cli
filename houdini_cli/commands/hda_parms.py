@@ -472,7 +472,19 @@ def handle_parms_defaults(args: argparse.Namespace) -> dict:
     if not args.from_current:
         raise ValueError("Currently requires --from-current")
     with connect(args.host, args.port) as session:
-        node = get_node(session, args.asset_node)
+        result = _set_defaults_from_current_in_houdini(session, args.asset_node)
+        return success_result(
+            {
+                "asset_node": args.asset_node,
+                "updated_defaults": result["updated_defaults"],
+                "library": result["library"],
+            }
+        )
+
+
+def _set_defaults_from_current_in_houdini(session: Any, node_path: str) -> dict[str, Any]:
+    if not hasattr(session, "connection"):
+        node = get_node(session, node_path)
         definition = definition_for_node(node)
         group = definition.parmTemplateGroup()
         count = 0
@@ -497,10 +509,47 @@ def handle_parms_defaults(args: argparse.Namespace) -> dict:
         definition.setParmTemplateGroup(group)
         library = save_definition(definition)
         node.matchCurrentDefinition()
-        return success_result(
-            {
-                "asset_node": args.asset_node,
-                "updated_defaults": count,
-                "library": library,
-            }
-        )
+        return {"updated_defaults": count, "library": library}
+
+    source = r"""
+import hou
+
+def _houdini_cli_hda_defaults_from_current(node_path):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    definition = node.type().definition()
+    if definition is None:
+        raise ValueError("Node is not an HDA instance: " + node_path)
+
+    group = definition.parmTemplateGroup()
+    count = 0
+    visited = set()
+    for parm in node.parms():
+        name = parm.tuple().name()
+        if name in visited:
+            continue
+        visited.add(name)
+        template = group.find(name)
+        if template is None:
+            continue
+        updated = template.clone()
+        values = [item.eval() for item in parm.tuple()]
+        try:
+            scalar = len(values) == 1 and updated.type().name() in {"Menu", "Toggle"}
+            updated.setDefaultValue(values[0] if scalar else tuple(values))
+        except Exception:
+            continue
+        group.replace(name, updated)
+        count += 1
+
+    definition.setParmTemplateGroup(group)
+    library = definition.libraryFilePath()
+    definition.save(library)
+    node.matchCurrentDefinition()
+    return {"updated_defaults": count, "library": library}
+"""
+    session.connection.execute(source)
+    return localize(
+        session.connection.eval(f"_houdini_cli_hda_defaults_from_current({node_path!r})")
+    )
