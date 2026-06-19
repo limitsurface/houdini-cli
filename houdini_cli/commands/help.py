@@ -390,7 +390,8 @@ HELP_TREE = {
             },
             "errors": {
                 "description": "Read errors, warnings, and messages from one or more nodes.",
-                "usage": "houdini-cli node errors <node-path> [<node-path> ...]",
+                "usage": "houdini-cli node errors <node-path> [<node-path> ...] [--cook]",
+                "notes": ["By default this reads existing messages without cooking the nodes."],
             },
             "connections": {
                 "description": "Read stable explicit input/output connection data for a node.",

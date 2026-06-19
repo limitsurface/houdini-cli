@@ -83,6 +83,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 
     errors_parser = node_subparsers.add_parser("errors", help="Get errors, warnings, and messages for nodes.")
     errors_parser.add_argument("node_paths", nargs="+", help="One or more node paths to inspect.")
+    errors_parser.add_argument(
+        "--cook",
+        action="store_true",
+        help="Cook each node before reading messages. By default existing messages are read without cooking.",
+    )
     errors_parser.set_defaults(handler=handle_errors)
 
     connections_parser = node_subparsers.add_parser(
@@ -401,7 +406,7 @@ def handle_errors(args: argparse.Namespace) -> dict:
         items = []
         for node_path in args.node_paths:
             node = get_node(session, node_path)
-            if hasattr(node, "cook"):
+            if getattr(args, "cook", False) and hasattr(node, "cook"):
                 try:
                     node.cook(force=True)
                 except Exception:

@@ -37,6 +37,7 @@ class FakeNode:
     def __init__(self, path="/obj/test") -> None:
         self._path = path
         self._connections = []
+        self.cook_count = 0
 
     def path(self):
         return self._path
@@ -49,6 +50,9 @@ class FakeNode:
 
     def messages(self):
         return ("heads up",)
+
+    def cook(self, force=False):
+        self.cook_count += 1
 
     def inputConnections(self):
         return self._connections
@@ -87,13 +91,27 @@ def test_handle_errors(monkeypatch) -> None:
     monkeypatch.setattr(node, "localize", lambda value: value)
 
     result = node.handle_errors(
-        Namespace(host="localhost", port=18811, node_paths=["/obj/test"])
+        Namespace(host="localhost", port=18811, node_paths=["/obj/test"], cook=False)
     )
 
     assert result["ok"] is True
+    assert fake_node.cook_count == 0
     assert result["data"]["items"][0]["errors"] == ["bad cook"]
     assert result["data"]["items"][0]["warnings"] == ["be careful"]
     assert result["data"]["items"][0]["messages"] == ["heads up"]
+
+
+def test_handle_errors_can_cook_first(monkeypatch) -> None:
+    fake_node = FakeNode()
+    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession(fake_node)))
+    monkeypatch.setattr(node, "localize", lambda value: value)
+
+    result = node.handle_errors(
+        Namespace(host="localhost", port=18811, node_paths=["/obj/test"], cook=True)
+    )
+
+    assert result["ok"] is True
+    assert fake_node.cook_count == 1
 
 
 def test_handle_connections(monkeypatch) -> None:
