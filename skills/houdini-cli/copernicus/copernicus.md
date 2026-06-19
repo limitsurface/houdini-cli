@@ -94,6 +94,23 @@ Integer pixel math produces square pixel blocks regardless of image dimensions. 
 | `?` | Optional binding; test with `#if @name.bound` | `#bind layer mask?` |
 | `!&` | Writable raw image, commonly used for aligned output | `#bind layer !&dst` |
 
+### Parameter Defaults
+
+For scalar/vector controls, declare OpenCL parameters with an explicit `val=`
+default:
+
+```c
+#bind parm scale float val=0.1
+#bind parm samples int val=17
+#bind parm tint float3 val={1, 0.8, 0.5}
+```
+
+After `houdini-cli opencl sync <node-path> --clear`, the OpenCL COP creates
+spare controls from these `#bind parm` directives and wires binding values to
+those controls. Bare declarations such as `#bind parm scale float` initialize
+the generated control to `0`, which can make a kernel appear broken even though
+the bindings are valid.
+
 ### Time Bindings
 
 `@Time` is available only when **Include Time** is enabled. `@TimeInc` is
