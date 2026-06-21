@@ -58,22 +58,22 @@ Exit criteria:
 
 Target modules: `opencl.py` and new `opencl_spares.py`.
 
-- [ ] Inventory generated spare-template creation, removal, synchronization, value capture/restore, and link-expression helpers.
-- [ ] Create `houdini_cli/commands/opencl_spares.py`.
-- [ ] Move generated spare parameter UI/template helpers into `opencl_spares.py`.
-- [ ] Move spare value capture and restore logic into `opencl_spares.py`.
-- [ ] Move generated value-link expression helpers into `opencl_spares.py`.
-- [ ] Keep COP/SOP/DOP orchestration in `opencl.py` during this phase.
-- [ ] Preserve `--preserve-spare-values` behavior and default behavior exactly.
-- [ ] Add or update focused tests for template generation, removal, linking, preservation, and tuple/scalar values.
-- [ ] Compare sync and validate output with the baseline.
-- [ ] Smoke-test OpenCL sync and validate, including preservation on and off, against the selected HDA.
-- [ ] Run the relevant performance benchmark and investigate any material regression.
-- [ ] Run the full test suite.
+- [x] Inventory generated spare-template creation, removal, synchronization, value capture/restore, and link-expression helpers.
+- [x] Create `houdini_cli/commands/opencl_spares.py`.
+- [x] Move generated spare parameter UI/template helpers into `opencl_spares.py`.
+- [x] Move spare value capture and restore logic into `opencl_spares.py`.
+- [x] Move generated value-link expression helpers into `opencl_spares.py`.
+- [x] Keep COP/SOP/DOP orchestration in `opencl.py` during this phase.
+- [x] Preserve `--preserve-spare-values` behavior and default behavior exactly.
+- [x] Add or update focused tests for template generation, removal, linking, preservation, and tuple/scalar values.
+- [x] Compare sync and validate output with the baseline.
+- [x] Smoke-test OpenCL sync and validate, including preservation on and off, against the selected HDA.
+- [x] Run the relevant performance benchmark and investigate any material regression.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] Spare parameter behavior has one cohesive owner and `opencl.py` is smaller without changing context-specific behavior.
+- [x] Spare parameter behavior has one cohesive owner and `opencl.py` is smaller without changing context-specific behavior.
 
 ## Phase 3: Cross-Cutting Remote Script Infrastructure
 

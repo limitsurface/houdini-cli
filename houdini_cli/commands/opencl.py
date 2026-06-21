@@ -8,6 +8,14 @@ from typing import Any
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from .node_common import get_node
+from .opencl_spares import (
+    SPARE_PARM_BINDING_TYPES,
+    link_binding_value_parms,
+    parm_bindings,
+    set_binding_value_expression,
+    spare_parm_name,
+    sync_spare_parms_preserving_values,
+)
 
 _VDB_SIGNATURE_TYPES = {
     "any": "fnvdb",
@@ -17,7 +25,6 @@ _VDB_SIGNATURE_TYPES = {
     "floatn": "fnvdb",
 }
 
-_SPARE_PARM_BINDING_TYPES = {"int", "float", "float2", "float3", "float4"}
 _DOP_SPARE_PARM_BINDING_TYPES = {"int", "float", "float3", "float4"}
 
 
@@ -140,187 +147,6 @@ def _binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
     return values
 
 
-def _spare_parm_name(binding: Any) -> str:
-    return str(_binding_scalar(binding, "name"))
-
-
-def _spare_parm_label(binding: Any) -> str:
-    name = _spare_parm_name(binding)
-    return name.replace("_", " ").title()
-
-
-def _spare_parm_template(session: Any, binding: Any) -> Any:
-    binding_type = str(_binding_scalar(binding, "type"))
-    name = _spare_parm_name(binding)
-    label = _spare_parm_label(binding)
-
-    if binding_type == "int":
-        return session.hou.IntParmTemplate(
-            name,
-            label,
-            1,
-            default_value=(int(_binding_scalar(binding, "intval")),),
-        )
-    if binding_type == "float":
-        return session.hou.FloatParmTemplate(
-            name,
-            label,
-            1,
-            default_value=(float(_binding_scalar(binding, "fval")),),
-        )
-    if binding_type == "float2":
-        return session.hou.FloatParmTemplate(
-            name,
-            label,
-            2,
-            default_value=tuple(_binding_vector(binding, "v2val", 2)),
-        )
-    if binding_type == "float3":
-        return session.hou.FloatParmTemplate(
-            name,
-            label,
-            3,
-            default_value=tuple(_binding_vector(binding, "v3val", 3)),
-        )
-    if binding_type == "float4":
-        return session.hou.FloatParmTemplate(
-            name,
-            label,
-            4,
-            default_value=tuple(_binding_vector(binding, "v4val", 4)),
-        )
-    raise ValueError(f"Unsupported spare parm binding type: {binding_type}")
-
-
-def _generated_spare_parm_folder(session: Any, bindings: list[Any]) -> Any:
-    folder = session.hou.FolderParmTemplate(
-        "folder_generatedparms_kernelcode",
-        "Generated Channel Parameters",
-    )
-    for binding in bindings:
-        folder.addParmTemplate(_spare_parm_template(session, binding))
-    return folder
-
-
-def _remove_generated_spare_parm_ui(opencl_node: Any) -> None:
-    group = opencl_node.parmTemplateGroup()
-    changed = False
-
-    for folder_name in ("opencl_sync_controls", "folder_generatedparms_kernelcode"):
-        entries = getattr(group, "entries", lambda: ())()
-        if any(entry.name() == folder_name for entry in entries):
-            group.remove(folder_name)
-            changed = True
-            continue
-
-        try:
-            group.remove(folder_name)
-            changed = True
-        except Exception:
-            pass
-
-    if changed:
-        opencl_node.setParmTemplateGroup(group)
-
-
-def _manual_sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> list[str]:
-    group = opencl_node.parmTemplateGroup()
-    generated_folder = _generated_spare_parm_folder(session, bindings)
-
-    try:
-        group.insertBefore("kernelcode", generated_folder)
-    except Exception:
-        group.append(generated_folder)
-
-    opencl_node.setParmTemplateGroup(group)
-    return [_spare_parm_name(binding) for binding in bindings]
-
-
-def _sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> list[str]:
-    desired_bindings = [
-        binding
-        for binding in bindings
-        if str(_binding_scalar(binding, "type")) in _SPARE_PARM_BINDING_TYPES
-    ]
-    _remove_generated_spare_parm_ui(opencl_node)
-
-    if not desired_bindings:
-        return []
-
-    return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
-
-
-def _spare_parm_component_names(binding: Any) -> list[str]:
-    name = _spare_parm_name(binding)
-    binding_type = str(_binding_scalar(binding, "type"))
-    component_counts = {"float2": 2, "float3": 3, "float4": 4}
-    count = component_counts.get(binding_type, 1)
-    if count == 1:
-        return [name]
-    return [f"{name}{index}" for index in range(1, count + 1)]
-
-
-def _capture_spare_parm_state(opencl_node: Any, bindings: list[Any]) -> dict[str, dict[str, Any]]:
-    states: dict[str, dict[str, Any]] = {}
-    for binding in bindings:
-        for name in _spare_parm_component_names(binding):
-            parm = opencl_node.parm(name)
-            if parm is None:
-                continue
-            state: dict[str, Any] = {}
-            try:
-                state["expression"] = parm.expression()
-            except Exception:
-                try:
-                    state["value"] = localize(parm.eval())
-                except Exception:
-                    continue
-            else:
-                try:
-                    state["language"] = parm.expressionLanguage()
-                except Exception:
-                    pass
-            states[name] = state
-    return states
-
-
-def _restore_spare_parm_state(opencl_node: Any, states: dict[str, dict[str, Any]]) -> None:
-    for name, state in states.items():
-        parm = opencl_node.parm(name)
-        if parm is None:
-            continue
-        if "expression" in state:
-            try:
-                parm.setExpression(state["expression"], state.get("language"))
-            except TypeError:
-                parm.setExpression(state["expression"])
-            continue
-        if "value" in state:
-            parm.set(state["value"])
-
-
-def _sync_spare_parms_preserving_values(
-    session: Any,
-    opencl_node: Any,
-    bindings: list[Any],
-    *,
-    preserve: bool,
-) -> list[str]:
-    states = _capture_spare_parm_state(opencl_node, bindings) if preserve else {}
-    spare_parms = _sync_spare_parms(session, opencl_node, bindings)
-    if states:
-        _restore_spare_parm_state(opencl_node, states)
-    return spare_parms
-
-
-def _parm_bindings(bindings: list[Any]) -> list[Any]:
-    return [
-        binding
-        for binding in bindings
-        if str(_binding_scalar(binding, "type")) in _SPARE_PARM_BINDING_TYPES
-    ]
-
-
 def _binding_row_values(bindings: list[Any]) -> dict[str, Any]:
     parm_values: dict[str, Any] = {}
     for index, binding in enumerate(bindings, start=1):
@@ -349,35 +175,6 @@ def _opencl_context(opencl_node: Any) -> str:
     if _is_dop_opencl(opencl_node):
         return "dop"
     return "cop"
-
-
-def _set_binding_value_expression(opencl_node: Any, parm_name: str, expression: str) -> None:
-    parm = opencl_node.parm(parm_name)
-    if parm is None:
-        return
-    parm.setExpression(expression)
-
-
-def _link_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
-    for index, binding in enumerate(bindings, start=1):
-        binding_type = str(_binding_scalar(binding, "type"))
-        spare_name = _spare_parm_name(binding)
-        expression = f'ch("./{spare_name}")'
-        prefix = f"bindings{index}_"
-
-        if binding_type == "int":
-            _set_binding_value_expression(opencl_node, f"{prefix}intval", expression)
-        elif binding_type == "float":
-            _set_binding_value_expression(opencl_node, f"{prefix}fval", expression)
-        elif binding_type == "float2":
-            for component in range(1, 3):
-                _set_binding_value_expression(opencl_node, f"{prefix}v2val{component}", f'ch("./{spare_name}{component}")')
-        elif binding_type == "float3":
-            for component in range(1, 4):
-                _set_binding_value_expression(opencl_node, f"{prefix}v3val{component}", f'ch("./{spare_name}{component}")')
-        elif binding_type == "float4":
-            for component in range(1, 5):
-                _set_binding_value_expression(opencl_node, f"{prefix}v4val{component}", f'ch("./{spare_name}{component}")')
 
 
 def _port_signature_entries(bindings: list[Any], *, output: bool) -> list[dict[str, Any]]:
@@ -518,7 +315,7 @@ def _compact_binding_rows(bindings: list[Any]) -> list[list[Any]]:
         binding_type = str(_binding_scalar(binding, "type"))
         readable = bool(_binding_scalar(binding, "readable"))
         writeable = bool(_binding_scalar(binding, "writeable"))
-        if binding_type in _SPARE_PARM_BINDING_TYPES:
+        if binding_type in SPARE_PARM_BINDING_TYPES:
             direction = "parm"
         elif readable and writeable:
             direction = "inout"
@@ -526,7 +323,7 @@ def _compact_binding_rows(bindings: list[Any]) -> list[list[Any]]:
             direction = "output"
         else:
             direction = "input"
-        rows.append([_spare_parm_name(binding), binding_type, direction])
+        rows.append([spare_parm_name(binding), binding_type, direction])
     return rows
 
 
@@ -534,7 +331,7 @@ def _compact_binding_row_summaries(rows: list[dict[str, Any]]) -> list[list[Any]
     result = []
     for row in rows:
         binding_type = str(row["type"])
-        direction = "parm" if binding_type in _SPARE_PARM_BINDING_TYPES else "input"
+        direction = "parm" if binding_type in SPARE_PARM_BINDING_TYPES else "input"
         result.append([str(row["name"]), binding_type, direction])
     return result
 
@@ -717,7 +514,7 @@ def _binding_row_hints(opencl_node: Any) -> list[str]:
             layer_rows.append(name)
             continue
 
-        if binding_type not in _SPARE_PARM_BINDING_TYPES:
+        if binding_type not in SPARE_PARM_BINDING_TYPES:
             continue
 
         expected = f'ch("./{name}")'
@@ -1029,11 +826,11 @@ def _link_dop_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None
     }
     for index, binding in enumerate(bindings, start=1):
         binding_type = str(_binding_scalar(binding, "type"))
-        spare_name = _spare_parm_name(binding)
+        spare_name = spare_parm_name(binding)
         for component, suffix in enumerate(suffixes.get(binding_type, []), start=1):
             target = f"parameter{index}{suffix}"
             source = spare_name if len(suffixes[binding_type]) == 1 else f"{spare_name}{component}"
-            _set_binding_value_expression(opencl_node, target, f'ch("./{source}")')
+            set_binding_value_expression(opencl_node, target, f'ch("./{source}")')
 
 
 def _sync_dop_bindings(opencl_node: Any, bindings: list[Any]) -> None:
@@ -1244,7 +1041,7 @@ def _sync_bindings(opencl_node: Any, bindings: list[Any]) -> None:
             if opencl_node.parm(name) is not None
         }
     opencl_node.setParms(parm_values)
-    _link_binding_value_parms(opencl_node, bindings)
+    link_binding_value_parms(opencl_node, bindings)
 
 
 def _sync_signature(
@@ -1286,15 +1083,15 @@ def _apply_signature(
     if _is_dop_opencl(opencl_node):
         if clear:
             opencl_node.setParms({"paramcount": 0})
-        parm_bindings = [
+        spare_bindings = [
             binding
             for binding in bindings
             if str(_binding_scalar(binding, "type")) in _DOP_SPARE_PARM_BINDING_TYPES
         ]
-        spare_parms = _sync_spare_parms_preserving_values(
+        spare_parms = sync_spare_parms_preserving_values(
             session,
             opencl_node,
-            parm_bindings,
+            spare_bindings,
             preserve=preserve_spare_values,
         )
         _sync_dop_bindings(opencl_node, bindings)
@@ -1307,10 +1104,10 @@ def _apply_signature(
     if _is_sop_opencl(opencl_node):
         if clear:
             opencl_node.setParms({"bindings": 0})
-        spare_parms = _sync_spare_parms_preserving_values(
+        spare_parms = sync_spare_parms_preserving_values(
             session,
             opencl_node,
-            _parm_bindings(bindings),
+            parm_bindings(bindings),
             preserve=preserve_spare_values,
         )
         _sync_bindings(opencl_node, bindings)
@@ -1339,15 +1136,15 @@ def _apply_signature(
         else:
             opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
 
-    parm_bindings = _parm_bindings(bindings)
-    spare_parms = _sync_spare_parms_preserving_values(
+    spare_bindings = parm_bindings(bindings)
+    spare_parms = sync_spare_parms_preserving_values(
         session,
         opencl_node,
-        parm_bindings,
+        spare_bindings,
         preserve=preserve_spare_values,
     )
 
-    _sync_bindings(opencl_node, parm_bindings)
+    _sync_bindings(opencl_node, spare_bindings)
     if not bindings_only:
         _sync_signature(opencl_node, input_entries, output_entries)
 
