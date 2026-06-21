@@ -149,6 +149,11 @@ This would make future Houdini-main-thread fixes easier to review, but it should
 
 1. Extract `parm_refs.py` and reuse it from `hda_validate.py`.
 2. Extract OpenCL spare-parameter helpers into `opencl_spares.py`.
-3. Split `help.py` into per-command help topic modules.
-4. Extract `node_references.py`.
-5. Revisit OpenCL COP/SOP/DOP splitting after the spare helper extraction proves stable.
+3. Establish cross-cutting remote-script infrastructure from the patterns proven by the first two extractions.
+4. Split `help.py` into per-command help topic modules.
+5. Extract `node_references.py`, then split the remaining node responsibilities if the boundary holds.
+6. Revisit OpenCL COP/SOP/DOP splitting after the spare helper extraction proves stable.
+7. Split the remaining parameter workflows after the shared reference and remote-script patterns are settled.
+8. Reassess every watchlist module and refactor only where current evidence supports it.
+
+The executable phase plan and acceptance gates are tracked in `docs/2026-06-21_code_refactor_checklist.md`.
