@@ -36,11 +36,14 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.cop_command == "info"
     assert args.output is None
 
-    args = parser.parse_args(["opencl", "sync", "/obj/cops/opencl1", "--clear"])
+    args = parser.parse_args(
+        ["opencl", "sync", "/obj/cops/opencl1", "--clear", "--preserve-spare-values"]
+    )
     assert args.command == "opencl"
     assert args.opencl_command == "sync"
     assert args.clear is True
     assert args.disconnect_invalid is False
+    assert args.preserve_spare_values is True
 
     args = parser.parse_args(["opencl", "validate", "/obj/cops/opencl1"])
     assert args.command == "opencl"
@@ -109,9 +112,10 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.raw is True
     assert args.expressions is True
 
-    args = parser.parse_args(["parm", "refs", "/obj/x", "--external-to", "/obj/x"])
+    args = parser.parse_args(["parm", "refs", "/obj/x", "--external-to", "/obj/x", "--recursive"])
     assert args.parm_command == "refs"
     assert args.external_to == "/obj/x"
+    assert args.recursive is True
 
     args = parser.parse_args(["parm", "template", "set", "/obj/x/size", "--target", "definition", "--input", "-"])
     assert args.parm_template_command == "set"
@@ -189,6 +193,10 @@ def test_build_parser_registers_new_command_groups() -> None:
 
     args = parser.parse_args(["hda", "update", "/obj/geo1/asset1", "--all"])
     assert args.all is True
+
+    args = parser.parse_args(["hda", "validate", "/obj/geo1/asset1", "--external-references"])
+    assert args.hda_command == "validate"
+    assert args.external_references is True
 
     args = parser.parse_args(["session", "frame", "24"])
     assert args.command == "session"

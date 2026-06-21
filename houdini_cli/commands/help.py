@@ -320,15 +320,16 @@ HELP_TREE = {
                 "description": "Search parameter names, raw values, expressions, and resolved references on one node.",
                 "usage": "houdini-cli parm find <node-path> --query TEXT [--raw] [--expressions] [--resolved-targets] [--max-matches N]",
                 "notes": [
-                    "query matching checks names, paths, raw values, expressions, and resolved targets",
+                    "query matching checks names, raw values, expressions, and resolved targets",
                     "detail flags control which extra fields are returned in matching rows",
                 ],
             },
             "refs": {
-                "description": "List resolved parameter references on one node.",
-                "usage": "houdini-cli parm refs <node-path> [--external-to ROOT] [--max-refs N]",
+                "description": "List resolved parameter references on one node or network.",
+                "usage": "houdini-cli parm refs <node-path> [--external-to ROOT] [--recursive] [--max-refs N]",
                 "notes": [
                     "--external-to marks references outside the supplied node or network root",
+                    "--recursive includes child nodes below node-path",
                 ],
             },
             "template": {
@@ -553,7 +554,7 @@ HELP_TREE = {
             },
             "validate": {
                 "description": "Validate definition state, fresh instantiation, cooking, and interface behavior.",
-                "usage": "houdini-cli hda validate <asset-node> [--fresh-instance] [--cook] [--frames CSV] [--strict]",
+                "usage": "houdini-cli hda validate <asset-node> [--fresh-instance] [--cook] [--frames CSV] [--strict] [--external-references]",
             },
             "parms": {
                 "description": "Inspect, apply, promote, and synchronize HDA parameters.",
@@ -647,7 +648,7 @@ HELP_TREE = {
             },
             "sync": {
                 "description": "Refresh an OpenCL node from #bind directives using COP signatures, SOP bindings, or Gas OpenCL DOP parameters.",
-                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--details]",
+                "usage": "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--preserve-spare-values] [--details]",
                 "examples": [
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1",
                     "uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only",

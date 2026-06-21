@@ -431,6 +431,34 @@ def test_handle_sync_rebuilds_signature_and_bindings(monkeypatch) -> None:
     assert [child.name() for child in folder.parmTemplates()] == ["gain"]
 
 
+def test_handle_sync_can_preserve_generated_spare_expression(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True, optional=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+        _binding(name="gain", type="float", portname="gain", fval=0.125, defval=True),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj._parms["gain"] = FakeParm(0.125)
+    node_obj._parms["gain"].setExpression('ch("../hda_gain")')
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+            preserve_spare_values=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["preserve_spare_values"] is True
+    assert node_obj.parm("gain").last_expression == 'ch("../hda_gain")'
+
+
 def test_handle_sync_bindings_only_leaves_signature_untouched(monkeypatch) -> None:
     bindings = [
         _binding(name="src", type="layer", portname="src", readable=True, optional=True),
@@ -934,6 +962,28 @@ def test_handle_validate_compact_response_keeps_binding_names(monkeypatch) -> No
         ["gain", "float", "parm"],
     ]
     assert "desired_inputs" not in result["data"]
+
+
+def test_validate_normalizes_desired_output_optional_field(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True, optional=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+    ]
+    node_obj = FakeOpenclNode()
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(host="localhost", port=18811, node_path="/obj/cops/opencl1", details=True)
+    )
+
+    assert result["data"]["signature_matches_kernel"] is True
+    assert result["data"]["desired_outputs"] == [
+        {"name": "dst", "type": "floatn", "optional": False}
+    ]
+    assert result["data"]["current_outputs"] == [
+        {"name": "dst", "type": "floatn", "optional": False}
+    ]
 
 
 def test_existing_signature_unwraps_parms_as_data_values(monkeypatch) -> None:

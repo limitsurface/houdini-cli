@@ -240,8 +240,18 @@ def test_handle_help_opencl_sync_topic_has_examples() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl", "sync"]))
 
     assert result["ok"] is True
-    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--details]"
+    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--preserve-spare-values] [--details]"
     assert any("--bindings-only" in example for example in result["data"]["examples"])
+
+
+def test_handle_help_reference_audit_topics_include_new_flags() -> None:
+    parm_refs = help_command.handle_help(Namespace(command_path=["parm", "refs"]))
+    hda_validate = help_command.handle_help(Namespace(command_path=["hda", "validate"]))
+
+    assert parm_refs["ok"] is True
+    assert "--recursive" in parm_refs["data"]["usage"]
+    assert hda_validate["ok"] is True
+    assert "--external-references" in hda_validate["data"]["usage"]
 
 
 def test_handle_help_opencl_validate_topic_has_usage() -> None:

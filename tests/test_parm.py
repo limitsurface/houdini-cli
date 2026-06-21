@@ -32,6 +32,7 @@ class FakeParm:
         self.last_value_payload = None
         self.last_full_payload = None
         self.last_scalar_payload = None
+        self._node = None
 
     def valueAsData(self):
         return self._value
@@ -44,6 +45,9 @@ class FakeParm:
 
     def path(self):
         return self._path
+
+    def node(self):
+        return self._node
 
     def rawValue(self):
         return self._raw
@@ -177,11 +181,26 @@ class FakeConnect:
 
 
 class FakeNode:
-    def __init__(self, parms: list[FakeParm]) -> None:
+    def __init__(self, parms: list[FakeParm], children=None) -> None:
         self._parms = parms
+        self._children = children or []
+        for item in self._parms:
+            item._node = self
 
     def parms(self):
         return self._parms
+
+    def allSubChildren(self):
+        return self._children
+
+    def parm(self, name: str):
+        for item in self._parms:
+            if item.name() == name:
+                return item
+        return None
+
+    def node(self, path: str):
+        return None
 
 
 class FakeTargetParm:
@@ -561,6 +580,7 @@ def test_handle_refs_marks_external_targets(monkeypatch) -> None:
             port=18811,
             node_path="/obj/x",
             external_to="/obj/x",
+            recursive=False,
             max_refs=10,
         )
     )
@@ -576,6 +596,71 @@ def test_handle_refs_marks_external_targets(monkeypatch) -> None:
             "to_parm": "/obj/geo1/copnet1/controller/amount",
             "external": True,
         },
+    ]
+
+
+def test_handle_refs_recursive_includes_child_nodes(monkeypatch) -> None:
+    child = FakeNode(
+        [
+            FakeParm(
+                name="external",
+                path="/obj/x/child/external",
+                references=[FakeTargetParm("/obj/geo1/controller/amount")],
+            )
+        ]
+    )
+    fake_node = FakeNode([], children=[child])
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_refs(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            external_to="/obj/x",
+            recursive=True,
+            max_refs=10,
+        )
+    )
+
+    assert result["data"]["recursive"] is True
+    assert result["data"]["items"] == [
+        {
+            "from_parm": "/obj/x/child/external",
+            "to_parm": "/obj/geo1/controller/amount",
+            "external": True,
+        }
+    ]
+
+
+def test_handle_refs_resolves_channel_refs_when_hom_references_are_empty(monkeypatch) -> None:
+    fake_node = FakeNode(
+        [
+            FakeParm(name="source", path="/obj/x/source", expression='ch("target")'),
+            FakeParm(name="target", path="/obj/x/target"),
+        ]
+    )
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_refs(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            external_to="/obj/x",
+            recursive=False,
+            max_refs=10,
+        )
+    )
+
+    assert result["data"]["items"] == [
+        {
+            "from_parm": "/obj/x/source",
+            "to_parm": "/obj/x/target",
+            "external": False,
+        }
     ]
 
 

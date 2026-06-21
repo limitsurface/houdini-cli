@@ -58,6 +58,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="After syncing, disconnect any wired inputs whose source output type no longer matches the regenerated input type.",
     )
     sync_parser.add_argument(
+        "--preserve-spare-values",
+        action="store_true",
+        help="Restore existing generated spare parameter values or expressions after rebuilding them.",
+    )
+    sync_parser.add_argument(
         "--details",
         action="store_true",
         help="Include the full post-sync validation payload.",
@@ -243,6 +248,69 @@ def _sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> li
         return []
 
     return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
+
+
+def _spare_parm_component_names(binding: Any) -> list[str]:
+    name = _spare_parm_name(binding)
+    binding_type = str(_binding_scalar(binding, "type"))
+    component_counts = {"float2": 2, "float3": 3, "float4": 4}
+    count = component_counts.get(binding_type, 1)
+    if count == 1:
+        return [name]
+    return [f"{name}{index}" for index in range(1, count + 1)]
+
+
+def _capture_spare_parm_state(opencl_node: Any, bindings: list[Any]) -> dict[str, dict[str, Any]]:
+    states: dict[str, dict[str, Any]] = {}
+    for binding in bindings:
+        for name in _spare_parm_component_names(binding):
+            parm = opencl_node.parm(name)
+            if parm is None:
+                continue
+            state: dict[str, Any] = {}
+            try:
+                state["expression"] = parm.expression()
+            except Exception:
+                try:
+                    state["value"] = localize(parm.eval())
+                except Exception:
+                    continue
+            else:
+                try:
+                    state["language"] = parm.expressionLanguage()
+                except Exception:
+                    pass
+            states[name] = state
+    return states
+
+
+def _restore_spare_parm_state(opencl_node: Any, states: dict[str, dict[str, Any]]) -> None:
+    for name, state in states.items():
+        parm = opencl_node.parm(name)
+        if parm is None:
+            continue
+        if "expression" in state:
+            try:
+                parm.setExpression(state["expression"], state.get("language"))
+            except TypeError:
+                parm.setExpression(state["expression"])
+            continue
+        if "value" in state:
+            parm.set(state["value"])
+
+
+def _sync_spare_parms_preserving_values(
+    session: Any,
+    opencl_node: Any,
+    bindings: list[Any],
+    *,
+    preserve: bool,
+) -> list[str]:
+    states = _capture_spare_parm_state(opencl_node, bindings) if preserve else {}
+    spare_parms = _sync_spare_parms(session, opencl_node, bindings)
+    if states:
+        _restore_spare_parm_state(opencl_node, states)
+    return spare_parms
 
 
 def _parm_bindings(bindings: list[Any]) -> list[Any]:
@@ -497,6 +565,17 @@ def _compact_validation(validation: dict[str, Any], bindings: list[Any]) -> dict
 
 def _signature_key(entry: dict[str, Any]) -> tuple[str, str]:
     return (str(entry["name"]), str(entry["type"]))
+
+
+def _validation_output_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": entry["name"],
+            "type": entry["type"],
+            "optional": bool(entry.get("optional", False)),
+        }
+        for entry in entries
+    ]
 
 
 def _preserve_signature_order(existing: list[dict[str, Any]], desired: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1123,8 +1202,9 @@ def _validation_summary(
         input_rows.append(row)
 
     desired_input_rows = [{"name": entry["name"], "type": entry["type"], "optional": entry["optional"]} for entry in desired_inputs]
-    desired_output_rows = [{"name": entry["name"], "type": entry["type"]} for entry in desired_outputs]
-    signature_matches_kernel = current_inputs == desired_input_rows and current_outputs == desired_output_rows
+    desired_output_rows = _validation_output_rows(desired_outputs)
+    current_output_rows = _validation_output_rows(current_outputs)
+    signature_matches_kernel = current_inputs == desired_input_rows and current_output_rows == desired_output_rows
     if not signature_matches_kernel:
         hints.append(f"OpenCL signature differs from kernel #bind directives. Try: houdini-cli opencl sync {localize(opencl_node.path())}")
 
@@ -1141,7 +1221,7 @@ def _validation_summary(
         "desired_inputs": desired_input_rows,
         "desired_outputs": desired_output_rows,
         "current_inputs": current_inputs,
-        "current_outputs": current_outputs,
+        "current_outputs": current_output_rows,
         "inputs": input_rows,
         "hints": hints,
         **messages,
@@ -1201,6 +1281,7 @@ def _apply_signature(
     *,
     clear: bool,
     bindings_only: bool,
+    preserve_spare_values: bool = False,
 ) -> dict[str, Any]:
     if _is_dop_opencl(opencl_node):
         if clear:
@@ -1210,7 +1291,12 @@ def _apply_signature(
             for binding in bindings
             if str(_binding_scalar(binding, "type")) in _DOP_SPARE_PARM_BINDING_TYPES
         ]
-        spare_parms = _sync_spare_parms(session, opencl_node, parm_bindings)
+        spare_parms = _sync_spare_parms_preserving_values(
+            session,
+            opencl_node,
+            parm_bindings,
+            preserve=preserve_spare_values,
+        )
         _sync_dop_bindings(opencl_node, bindings)
         return {
             "inputs": [],
@@ -1221,7 +1307,12 @@ def _apply_signature(
     if _is_sop_opencl(opencl_node):
         if clear:
             opencl_node.setParms({"bindings": 0})
-        spare_parms = _sync_spare_parms(session, opencl_node, _parm_bindings(bindings))
+        spare_parms = _sync_spare_parms_preserving_values(
+            session,
+            opencl_node,
+            _parm_bindings(bindings),
+            preserve=preserve_spare_values,
+        )
         _sync_bindings(opencl_node, bindings)
         return {
             "inputs": [],
@@ -1249,7 +1340,12 @@ def _apply_signature(
             opencl_node.setParms({"inputs": 0, "outputs": 0, "bindings": 0})
 
     parm_bindings = _parm_bindings(bindings)
-    spare_parms = _sync_spare_parms(session, opencl_node, parm_bindings)
+    spare_parms = _sync_spare_parms_preserving_values(
+        session,
+        opencl_node,
+        parm_bindings,
+        preserve=preserve_spare_values,
+    )
 
     _sync_bindings(opencl_node, parm_bindings)
     if not bindings_only:
@@ -1286,6 +1382,7 @@ def handle_sync(args: argparse.Namespace) -> dict:
             bindings,
             clear=args.clear,
             bindings_only=args.bindings_only,
+            preserve_spare_values=getattr(args, "preserve_spare_values", False),
         )
         if runover:
             runover_parm = opencl_node.parm("runover") or opencl_node.parm("options_runover")
@@ -1307,6 +1404,7 @@ def handle_sync(args: argparse.Namespace) -> dict:
             **_compact_validation(validation, bindings),
             "bindings_only": bool(args.bindings_only),
             "disconnect_invalid": bool(getattr(args, "disconnect_invalid", False)),
+            "preserve_spare_values": bool(getattr(args, "preserve_spare_values", False)),
             "disconnected_inputs": disconnected_inputs,
             "spare_parms": summary["spare_parms"],
             "inputs": summary["inputs"],

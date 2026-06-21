@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import re
 from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from ..util.input import read_json_input, read_text_input
+
+_CHANNEL_REF_PATTERN = re.compile(r"\bch(?:s|f|i|v|p|raw)?\s*\(\s*['\"]([^'\"]+)['\"]")
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -85,6 +88,7 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     refs_parser = parm_subparsers.add_parser("refs", help="List resolved parameter references on one node.")
     refs_parser.add_argument("node_path", help="Node path to inspect.")
     refs_parser.add_argument("--external-to", help="Mark references outside this node/network root.")
+    refs_parser.add_argument("--recursive", action="store_true", help="Include child nodes below node_path.")
     refs_parser.add_argument("--max-refs", type=int, default=100, help="Maximum references to return.")
     refs_parser.set_defaults(handler=handle_refs)
 
@@ -378,11 +382,52 @@ def _safe_expression(parm: Any) -> tuple[str | None, str | None]:
         return None, None
 
 
-def _target_paths(parm: Any) -> list[str]:
+def _resolve_local_channel_ref(parm: Any, token: str) -> str | None:
+    if token.startswith("/"):
+        return None
     try:
-        return [localize(target.path()) for target in parm.references()]
+        node = parm.node()
     except Exception:
-        return []
+        return None
+    if "/" not in token:
+        try:
+            target = node.parm(token)
+            return localize(target.path()) if target is not None else None
+        except Exception:
+            return None
+    node_token, parm_name = token.rsplit("/", 1)
+    try:
+        target_node = node.node(node_token)
+    except Exception:
+        target_node = None
+    if target_node is None:
+        return None
+    try:
+        target = target_node.parm(parm_name)
+        return localize(target.path()) if target is not None else None
+    except Exception:
+        return None
+
+
+def _target_paths(parm: Any) -> list[str]:
+    paths: list[str] = []
+    try:
+        paths.extend(localize(target.path()) for target in parm.references())
+    except Exception:
+        pass
+    seen = set(paths)
+    raw = _safe_raw_value(parm)
+    expression, _language = _safe_expression(parm)
+    for text in (expression, raw if isinstance(raw, str) else None):
+        if not text:
+            continue
+        for match in _CHANNEL_REF_PATTERN.finditer(text):
+            path = _resolve_local_channel_ref(parm, match.group(1))
+            if path is None or path in seen:
+                continue
+            seen.add(path)
+            paths.append(path)
+    return paths
 
 
 def _within_root(path: str, root_path: str) -> bool:
@@ -446,26 +491,41 @@ def _parm_search_rows(
     return rows
 
 
-def _parm_refs_rows(node: Any, *, external_to: str | None, max_refs: int) -> list[dict[str, Any]]:
+def _parm_refs_rows(
+    node: Any,
+    *,
+    external_to: str | None,
+    recursive: bool,
+    max_refs: int,
+) -> list[dict[str, Any]]:
     rows = []
-    for parm in node.parms():
-        if _parm_template_type(parm) in SKIPPED_TEMPLATE_TYPES:
-            continue
-        from_path = localize(parm.path())
-        for target_path in _target_paths(parm):
-            row = {"from_parm": from_path, "to_parm": target_path}
-            if external_to is not None:
-                row["external"] = not _within_root(target_path, external_to)
-            rows.append(row)
-            if len(rows) >= max_refs:
-                return rows
+    nodes = [node]
+    if recursive:
+        try:
+            nodes.extend(list(node.allSubChildren()))
+        except Exception:
+            pass
+    for current in nodes:
+        for parm in current.parms():
+            if _parm_template_type(parm) in SKIPPED_TEMPLATE_TYPES:
+                continue
+            from_path = localize(parm.path())
+            for target_path in _target_paths(parm):
+                row = {"from_parm": from_path, "to_parm": target_path}
+                if external_to is not None:
+                    row["external"] = not _within_root(target_path, external_to)
+                rows.append(row)
+                if len(rows) >= max_refs:
+                    return rows
     return rows
 
 
 _PARM_SEARCH_CODE = r"""
+import re
 import hou
 
 SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
+CHANNEL_REF_PATTERN = re.compile(r"\bch(?:s|f|i|v|p|raw)?\s*\(\s*['\"]([^'\"]+)['\"]")
 
 def _houdini_cli_parm_tuple_type(parm):
     members = list(parm.tuple())
@@ -491,10 +551,35 @@ def _houdini_cli_parm_expression(parm):
         return None, None
 
 def _houdini_cli_parm_targets(parm):
+    paths = []
     try:
-        return [target.path() for target in parm.references()]
+        paths.extend(target.path() for target in parm.references())
     except Exception:
-        return []
+        pass
+    seen = set(paths)
+    raw = _houdini_cli_parm_raw(parm)
+    expression, _language = _houdini_cli_parm_expression(parm)
+    for text in (expression, raw if isinstance(raw, str) else None):
+        if not text:
+            continue
+        for match in CHANNEL_REF_PATTERN.finditer(text):
+            token = match.group(1)
+            if token.startswith("/"):
+                target = hou.parm(token)
+            elif "/" not in token:
+                target = parm.node().parm(token)
+            else:
+                node_token, parm_name = token.rsplit("/", 1)
+                target_node = parm.node().node(node_token)
+                target = target_node.parm(parm_name) if target_node is not None else None
+            if target is None:
+                continue
+            path = target.path()
+            if path in seen:
+                continue
+            seen.add(path)
+            paths.append(path)
+    return paths
 
 def _houdini_cli_within_root(parm_path, root_path):
     node_path = parm_path.rsplit("/", 1)[0]
@@ -550,21 +635,28 @@ def _houdini_cli_parm_find(node_path, query, include_raw, include_expressions, i
             break
     return rows
 
-def _houdini_cli_parm_refs(node_path, external_to, max_refs):
+def _houdini_cli_parm_refs(node_path, external_to, recursive, max_refs):
     node = hou.node(node_path)
     if node is None:
         raise ValueError("Node not found: " + node_path)
     rows = []
-    for parm in node.parms():
-        if parm.parmTemplate().type().name() in SKIPPED_TEMPLATE_TYPES:
-            continue
-        for target_path in _houdini_cli_parm_targets(parm):
-            row = {"from_parm": parm.path(), "to_parm": target_path}
-            if external_to is not None:
-                row["external"] = not _houdini_cli_within_root(target_path, external_to)
-            rows.append(row)
-            if len(rows) >= max_refs:
-                return rows
+    nodes = [node]
+    if recursive:
+        try:
+            nodes.extend(list(node.allSubChildren()))
+        except Exception:
+            pass
+    for current in nodes:
+        for parm in current.parms():
+            if parm.parmTemplate().type().name() in SKIPPED_TEMPLATE_TYPES:
+                continue
+            for target_path in _houdini_cli_parm_targets(parm):
+                row = {"from_parm": parm.path(), "to_parm": target_path}
+                if external_to is not None:
+                    row["external"] = not _houdini_cli_within_root(target_path, external_to)
+                rows.append(row)
+                if len(rows) >= max_refs:
+                    return rows
     return rows
 """
 
@@ -606,17 +698,24 @@ def _parm_refs_in_houdini(
     node_path: str,
     *,
     external_to: str | None,
+    recursive: bool,
     max_refs: int,
 ) -> list[dict[str, Any]]:
     if max_refs <= 0:
         raise ValueError(f"Maximum refs must be positive: {max_refs}")
     if not hasattr(session, "connection"):
         node = _get_node(session, node_path)
-        return _parm_refs_rows(node, external_to=external_to, max_refs=max_refs)
+        return _parm_refs_rows(
+            node,
+            external_to=external_to,
+            recursive=recursive,
+            max_refs=max_refs,
+        )
     session.connection.execute(_PARM_SEARCH_CODE)
     return localize(
         session.connection.eval(
-            f"_houdini_cli_parm_refs({node_path!r}, {external_to!r}, {int(max_refs)!r})"
+            "_houdini_cli_parm_refs("
+            f"{node_path!r}, {external_to!r}, {bool(recursive)!r}, {int(max_refs)!r})"
         )
     )
 
@@ -649,12 +748,14 @@ def handle_refs(args: argparse.Namespace) -> dict:
             session,
             args.node_path,
             external_to=args.external_to,
+            recursive=args.recursive,
             max_refs=args.max_refs,
         )
         return success_result(
             {
                 "node": args.node_path,
                 "external_to": args.external_to,
+                "recursive": bool(args.recursive),
                 "count": len(rows),
                 "items": rows,
             },

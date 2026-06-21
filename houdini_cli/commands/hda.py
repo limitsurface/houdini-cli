@@ -140,6 +140,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     validate.add_argument("--cook", action="store_true")
     validate.add_argument("--frames")
     validate.add_argument("--strict", action="store_true")
+    validate.add_argument(
+        "--external-references",
+        action="store_true",
+        help="Scan contained parameter expressions for references outside the asset.",
+    )
     validate.set_defaults(handler=handle_validate)
 
     _register_section(subs)
