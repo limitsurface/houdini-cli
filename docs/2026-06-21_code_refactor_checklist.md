@@ -79,23 +79,23 @@ Exit criteria:
 
 Target area: raw Houdini-side Python embedded across command modules.
 
-- [ ] Inventory embedded remote scripts in `opencl.py`, `parm.py`, `hda_validate.py`, `node.py`, `hda_parms.py`, `query.py`, and the remaining command modules.
-- [ ] Classify each script as a reusable operation, command-specific payload builder, or trivial inline expression.
-- [ ] Use the Phase 1 and Phase 2 extractions to define the smallest proven packaging pattern.
-- [ ] Decide whether the shared home should be `houdini_cli/remote/`, command-adjacent remote modules, or a combination of both.
-- [ ] Define stable, namespaced remote entrypoint names.
-- [ ] Define a consistent script-builder interface for arguments and result payloads.
-- [ ] Keep payload serialization structured; avoid ad hoc interpolation of user values.
-- [ ] Add focused unit tests for script builders and payload normalization.
-- [ ] Migrate one low-risk remote operation as the reference implementation.
-- [ ] Smoke-test the reference implementation in live Houdini.
-- [ ] Document the chosen pattern for subsequent phases.
-- [ ] Migrate remaining scripts incrementally as their owning modules are refactored; do not perform a single all-module rewrite.
-- [ ] Run the full test suite after the reference migration.
+- [x] Inventory embedded remote scripts in `opencl.py`, `parm.py`, `hda_validate.py`, `node.py`, `hda_parms.py`, `query.py`, and the remaining command modules.
+- [x] Classify each script as a reusable operation, command-specific payload builder, or trivial inline expression.
+- [x] Use the Phase 1 and Phase 2 extractions to define the smallest proven packaging pattern.
+- [x] Use `houdini_cli/remote/` for shared/domain script modules while retaining small command-adjacent scripts until their owning refactor.
+- [x] Define stable, namespaced remote entrypoint names.
+- [x] Define a consistent script-builder interface for arguments and result payloads.
+- [x] Keep payload serialization structured; avoid ad hoc interpolation of user values.
+- [x] Add focused unit tests for script builders and payload normalization.
+- [x] Migrate parameter/HDA reference scanning as the reference implementation.
+- [x] Smoke-test the reference implementation in live Houdini.
+- [x] Document the chosen pattern for subsequent phases.
+- [x] Record remaining scripts for incremental migration with their owning modules; avoid a single all-module rewrite.
+- [x] Run the full test suite after the reference migration.
 
 Exit criteria:
 
-- [ ] A tested remote-script pattern exists and later module splits can adopt it without inventing new execution conventions.
+- [x] A tested remote-script pattern exists and later module splits can adopt it without inventing new execution conventions.
 
 ## Phase 4: Help Topic Split
 
