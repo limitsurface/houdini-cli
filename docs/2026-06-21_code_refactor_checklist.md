@@ -35,24 +35,24 @@ Exit criteria:
 
 Target modules: `parm.py`, new `parm_refs.py`, and `hda_validate.py`.
 
-- [ ] Inventory reference parsing, safe parm reads, expression inspection, path resolution, and internal/external classification in `parm.py` and `hda_validate.py`.
-- [ ] Define the shared reference data model and ownership boundary.
-- [ ] Create `houdini_cli/commands/parm_refs.py`.
-- [ ] Move channel-reference parsing and target resolution into `parm_refs.py`.
-- [ ] Move raw/expression fallback readers into `parm_refs.py` where their behavior is genuinely shared.
-- [ ] Move root containment and external-reference classification into `parm_refs.py`.
-- [ ] Move `parm find` and `parm refs` implementation helpers into `parm_refs.py`.
-- [ ] Keep parser registration and thin command dispatch in `parm.py`.
-- [ ] Reuse the shared resolver from `hda_validate.py`.
-- [ ] Remove superseded duplicate helpers from `parm.py` and `hda_validate.py`.
-- [ ] Add or update focused tests for direct references, expression fallback references, recursive traversal, missing targets, and internal/external classification.
-- [ ] Compare representative JSON and text output with the baseline.
-- [ ] Smoke-test `parm find`, `parm refs`, recursive refs, and `hda validate --external-references` against the selected HDA.
-- [ ] Run the full test suite.
+- [x] Inventory reference parsing, safe parm reads, expression inspection, path resolution, and internal/external classification in `parm.py` and `hda_validate.py`.
+- [x] Define the shared reference data model and ownership boundary.
+- [x] Create `houdini_cli/commands/parm_refs.py`.
+- [x] Move channel-reference parsing and target resolution into `parm_refs.py`.
+- [x] Move raw/expression fallback readers into `parm_refs.py` where their behavior is genuinely shared.
+- [x] Move root containment and external-reference classification into `parm_refs.py`.
+- [x] Move `parm find` and `parm refs` implementation helpers into `parm_refs.py`.
+- [x] Keep parser registration and thin command dispatch in `parm.py`.
+- [x] Reuse the shared resolver from `hda_validate.py`.
+- [x] Remove superseded duplicate helpers from `parm.py` and `hda_validate.py`.
+- [x] Add or update focused tests for direct references, expression fallback references, recursive traversal, missing targets, and internal/external classification.
+- [x] Compare representative JSON and text output with the baseline.
+- [x] Smoke-test `parm find`, `parm refs`, recursive refs, and `hda validate --external-references` against the selected HDA.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] `parm.py` and `hda_validate.py` consume one reference resolver without changing their command contracts.
+- [x] `parm.py` and `hda_validate.py` consume one reference resolver without changing their command contracts.
 
 ## Phase 2: OpenCL Spare Parameter Extraction
 

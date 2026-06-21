@@ -1,4 +1,4 @@
-from houdini_cli.commands import hda_validate
+from houdini_cli.commands import hda_validate, parm_refs
 
 
 class FakeLanguage:
@@ -114,6 +114,7 @@ def test_external_reference_audit_recurses_and_distinguishes_reference_kinds(mon
     probe.add_parm("valid_relative", 'ch("../internal_ctrl/inside_gain")')
     probe.add_parm("valid_absolute", 'ch("/obj/geo1/asset1/internal_ctrl/inside_gain")')
     probe.add_parm("invalid_external", 'ch("/obj/geo1/outside/outside_gain")')
+    probe.add_parm("missing_target", 'ch("/obj/geo1/missing/value")')
     external = FakeParm(FakeNode("/obj/geo1/outside"), "outside_gain")
     session = FakeSession(
         {
@@ -121,9 +122,9 @@ def test_external_reference_audit_recurses_and_distinguishes_reference_kinds(mon
             "/obj/geo1/outside/outside_gain": external,
         }
     )
-    monkeypatch.setattr(hda_validate, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
-    result = hda_validate._external_reference_rows(session, asset)
+    result = parm_refs.external_reference_rows(session, asset)
 
     assert result["count"] == 1
     assert result["items"][0]["from_parm"] == "/obj/geo1/asset1/probe/invalid_external"
@@ -131,3 +132,5 @@ def test_external_reference_audit_recurses_and_distinguishes_reference_kinds(mon
     assert result["items"][0]["severity"] == "error"
     assert result["absolute_internal_count"] == 1
     assert result["absolute_internal"][0]["from_parm"] == "/obj/geo1/asset1/probe/valid_absolute"
+    assert result["internal_count"] == 1
+    assert result["reference_count"] == 3
