@@ -3,11 +3,63 @@
 from __future__ import annotations
 
 import argparse
+import json
 from typing import Any
 
 from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from ..util.input import read_text_input
+
+_SHELF_DISCOVERY_CODE = r"""
+import json as _houdini_cli_json
+import hou
+
+def _houdini_cli_shelf_rows():
+    rows = []
+    for shelf in hou.shelves.shelves().values():
+        rows.append([
+            str(shelf.name()),
+            str(shelf.label()),
+            len(shelf.tools()),
+            str(shelf.filePath()),
+        ])
+    rows.sort(key=lambda row: row[0].lower())
+    return {"count": len(rows), "cols": ["n", "l", "tc", "fp"], "rows": rows}
+
+def _houdini_cli_shelf_tool_rows(shelf_name):
+    shelf = hou.shelves.shelves().get(shelf_name)
+    if shelf is None:
+        raise ValueError("Shelf not found: " + shelf_name)
+    rows = [[str(tool.name()), str(tool.label())] for tool in shelf.tools()]
+    return {
+        "shelf": {"n": str(shelf.name()), "l": str(shelf.label())},
+        "count": len(rows),
+        "cols": ["n", "l"],
+        "rows": rows,
+    }
+
+def _houdini_cli_shelf_find(query):
+    needle = query.lower()
+    shelf_rows = []
+    tool_rows = []
+    for shelf_name, shelf in hou.shelves.shelves().items():
+        name = str(shelf.name())
+        label = str(shelf.label())
+        if needle in name.lower() or needle in label.lower():
+            shelf_rows.append([name, label])
+        for tool in shelf.tools():
+            tool_name = str(tool.name())
+            tool_label = str(tool.label())
+            if needle in tool_name.lower() or needle in tool_label.lower():
+                tool_rows.append([tool_name, tool_label, str(shelf_name)])
+    shelf_rows.sort(key=lambda row: row[0].lower())
+    tool_rows.sort(key=lambda row: (row[2].lower(), row[0].lower()))
+    return {
+        "query": query,
+        "shelves": {"count": len(shelf_rows), "cols": ["n", "l"], "rows": shelf_rows},
+        "tools": {"count": len(tool_rows), "cols": ["n", "l", "s"], "rows": tool_rows},
+    }
+"""
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -96,6 +148,14 @@ def _find_tool_shelves(session: Any, tool_name: str) -> list[str]:
 
 def handle_list(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
+        connection = getattr(session, "connection", None)
+        if connection is not None:
+            namespace = connection.namespace
+            connection.execute(_SHELF_DISCOVERY_CODE)
+            connection.execute(
+                "_houdini_cli_shelf_json = _houdini_cli_json.dumps(_houdini_cli_shelf_rows())"
+            )
+            return success_result(json.loads(localize(namespace["_houdini_cli_shelf_json"])))
         rows = [_shelf_row(shelf) for shelf in _shelves(session).values()]
         rows.sort(key=lambda row: row[0].lower())
         return success_result({"count": len(rows), "cols": ["n", "l", "tc", "fp"], "rows": rows})
@@ -103,6 +163,16 @@ def handle_list(args: argparse.Namespace) -> dict:
 
 def handle_tools(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
+        connection = getattr(session, "connection", None)
+        if connection is not None:
+            namespace = connection.namespace
+            namespace["_houdini_cli_shelf_name"] = args.shelf_name
+            connection.execute(_SHELF_DISCOVERY_CODE)
+            connection.execute(
+                "_houdini_cli_shelf_tools_json = _houdini_cli_json.dumps("
+                "_houdini_cli_shelf_tool_rows(_houdini_cli_shelf_name))"
+            )
+            return success_result(json.loads(localize(namespace["_houdini_cli_shelf_tools_json"])))
         shelf = _get_shelf(session, args.shelf_name)
         rows = [_tool_row(tool) for tool in shelf.tools()]
         return success_result(
@@ -118,6 +188,16 @@ def handle_tools(args: argparse.Namespace) -> dict:
 def handle_find(args: argparse.Namespace) -> dict:
     query = args.query.lower()
     with connect(args.host, args.port) as session:
+        connection = getattr(session, "connection", None)
+        if connection is not None:
+            namespace = connection.namespace
+            namespace["_houdini_cli_shelf_query"] = args.query
+            connection.execute(_SHELF_DISCOVERY_CODE)
+            connection.execute(
+                "_houdini_cli_shelf_find_json = _houdini_cli_json.dumps("
+                "_houdini_cli_shelf_find(_houdini_cli_shelf_query))"
+            )
+            return success_result(json.loads(localize(namespace["_houdini_cli_shelf_find_json"])))
         shelf_rows = []
         tool_rows = []
         for shelf_name, shelf in _shelves(session).items():

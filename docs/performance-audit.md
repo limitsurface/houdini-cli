@@ -19,6 +19,8 @@ The first optimization pass produced these commits:
 - `d12244b` - batch `node get --section references`.
 - 2026-06-21 follow-up - batch and cap broad `hda definitions` and
   `hda libraries` discovery.
+- 2026-06-21 follow-up - batch shelf discovery, recipe discovery, and compact
+  node query traversal.
 
 Live benchmark evidence came from Houdini 21.0.729 against the camera-shake
 test scene, primarily `/obj/copnet1/test_with_this`. The broad pattern held
@@ -411,13 +413,71 @@ implicitly from commands unless the user passed validation-related flags.
 File: `houdini_cli/commands/query.py`
 
 `node list/find/neighbors` are capped by default and use traversal timeouts,
-which is good. However, `node_summary()` performs several remote calls per
-node (`children`, `inputs`, `outputs`, flags, type/category).
+which is good. However, the original implementation still traversed and
+summarized each node from the client. `node_summary()` performs several remote
+calls per node (`children`, `inputs`, `outputs`, flags, type/category).
 
 Risk: low to medium with current caps, higher if users raise `--max-nodes`.
 
 Suggested fix: if traversal performance becomes an issue, batch summaries
 inside Houdini-side traversal and return rows directly.
+
+Status: fixed in the 2026-06-21 follow-up by moving compact row construction
+for `node list`, `node find`, and `node neighbors` into Houdini.
+
+Observed timings in the live NTSC/VHS session:
+
+```text
+node find /obj/geo1/copnet1 --max-depth 2 --max-nodes 100: ~2528 ms -> ~192 ms
+```
+
+## Shelf Commands
+
+File: `houdini_cli/commands/shelf.py`
+
+`shelf list`, `shelf tools`, and `shelf find` walked `hou.shelves.shelves()`
+and each shelf's tools from the client. The command outputs were compact, but
+the implementation still made many RPyC calls across shelf and tool objects.
+
+Risk: medium in sessions with many installed packages/shelves/tools.
+
+Suggested fix: batch shelf row construction inside Houdini and return compact
+rows.
+
+Status: fixed in the 2026-06-21 follow-up.
+
+Observed timings in the live NTSC/VHS session:
+
+```text
+shelf list:             ~649 ms -> ~196 ms
+shelf find --query Scy: ~894 ms -> ~199 ms
+```
+
+## Recipe Commands
+
+Files:
+
+- `houdini_cli/commands/recipe_common.py`
+- `houdini_cli/commands/recipe.py`
+
+`recipe list/find/get` and tool-recipe lookup scanned every Data node type and
+read `data.recipe.json` sections from client-side definition/section objects.
+This is the same broad discovery pattern as the HDA definition issue, with
+section content reads amplifying the cost.
+
+Risk: medium to high in sessions with many recipes and loaded recipe HDAs.
+
+Suggested fix: batch recipe payload scanning inside Houdini, keeping the
+existing `--limit` cap and output schema.
+
+Status: fixed in the 2026-06-21 follow-up.
+
+Observed timings in the live NTSC/VHS session:
+
+```text
+recipe list --limit 50:              ~1738 ms -> ~260 ms
+recipe find --query ntsc --limit 50: ~1795 ms -> ~240 ms
+```
 
 ## Recommended Priorities
 
