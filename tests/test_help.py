@@ -1,8 +1,10 @@
+import argparse
 from argparse import Namespace
 
 import pytest
 
 from houdini_cli.commands import help as help_command
+from houdini_cli.main import build_parser
 
 
 def test_handle_help_root() -> None:
@@ -18,6 +20,17 @@ def test_handle_help_root() -> None:
     assert result["data"]["legends"]["node_neighbors"]["nodes_cols"]["id"] == "response-local node id"
     assert result["data"]["legends"]["node_parm_rows"]["cols"]["v"] == "current value"
     assert any(item["command"] == "houdini-cli opencl sync <node-path>" for item in result["data"]["workflows"])
+
+
+def test_top_level_help_topics_match_parser_commands() -> None:
+    parser = build_parser()
+    subparsers = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert set(subparsers.choices) - {"help"} == set(help_command.HELP_TREE)
 
 
 def test_handle_help_topic() -> None:

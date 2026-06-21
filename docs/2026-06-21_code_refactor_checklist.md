@@ -101,21 +101,21 @@ Exit criteria:
 
 Target module: `help.py` and new `help_topics/` modules.
 
-- [ ] Create `houdini_cli/commands/help_topics/` with a clear aggregation interface.
-- [ ] Move the `parm` help subtree into its own topic module.
-- [ ] Move the `hda` help subtree into its own topic module.
-- [ ] Move the `opencl` help subtree into its own topic module.
-- [ ] Move remaining command-group help subtrees into appropriately named topic modules.
-- [ ] Keep traversal, lookup, formatting, and `handle_help` orchestration in `help.py`.
-- [ ] Preserve help topic ordering and exact output unless an existing defect is separately documented.
-- [ ] Add a lightweight check that parser command names and top-level help topics remain synchronized.
-- [ ] Add coverage for unknown, group, nested, and leaf help paths.
-- [ ] Compare representative help output with the baseline.
-- [ ] Run the full test suite.
+- [x] Create `houdini_cli/commands/help_topics/` with a clear aggregation interface.
+- [x] Move the `parm` help subtree into its own topic module.
+- [x] Move the `hda` help subtree into its own topic module.
+- [x] Move the `opencl` help subtree into its own topic module.
+- [x] Move remaining command-group help subtrees into appropriately named topic modules.
+- [x] Keep traversal, lookup, formatting, and `handle_help` orchestration in `help.py`.
+- [x] Preserve help topic ordering and exact output unless an existing defect is separately documented.
+- [x] Add a lightweight check that parser command names and top-level help topics remain synchronized.
+- [x] Add coverage for unknown, group, nested, and leaf help paths.
+- [x] Compare representative help output with the baseline.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] `help.py` owns help behavior while per-command modules own the static topic data.
+- [x] `help.py` owns help behavior while per-command modules own the static topic data.
 
 ## Phase 5: Node Command Split
 
