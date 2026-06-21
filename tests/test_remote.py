@@ -1,6 +1,7 @@
 import pytest
 
 from houdini_cli.remote import RemoteModule, python_literal
+from houdini_cli.remote.node_references import NODE_REFERENCE_REMOTE
 
 
 class FakeConnection:
@@ -53,3 +54,9 @@ def test_remote_module_rejects_unknown_entrypoint() -> None:
 
     with pytest.raises(KeyError, match="missing"):
         module.call("missing")
+
+
+def test_node_reference_remote_builds_registered_payload_call() -> None:
+    assert NODE_REFERENCE_REMOTE.call("payload", "/obj/geo1/asset1", True) == (
+        "_houdini_cli_node_reference_payload('/obj/geo1/asset1', True)"
+    )

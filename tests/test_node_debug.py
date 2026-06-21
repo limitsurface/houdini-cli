@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from houdini_cli.commands import node
+from houdini_cli.commands import node_inspect
 
 
 class FakeConnection:
@@ -87,10 +87,10 @@ class FakeConnect:
 
 def test_handle_errors(monkeypatch) -> None:
     fake_node = FakeNode()
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession(fake_node)))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    monkeypatch.setattr(node_inspect, "connect", FakeConnect(FakeSession(fake_node)))
+    monkeypatch.setattr(node_inspect, "localize", lambda value: value)
 
-    result = node.handle_errors(
+    result = node_inspect.handle_errors(
         Namespace(host="localhost", port=18811, node_paths=["/obj/test"], cook=False)
     )
 
@@ -103,10 +103,10 @@ def test_handle_errors(monkeypatch) -> None:
 
 def test_handle_errors_can_cook_first(monkeypatch) -> None:
     fake_node = FakeNode()
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession(fake_node)))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    monkeypatch.setattr(node_inspect, "connect", FakeConnect(FakeSession(fake_node)))
+    monkeypatch.setattr(node_inspect, "localize", lambda value: value)
 
-    result = node.handle_errors(
+    result = node_inspect.handle_errors(
         Namespace(host="localhost", port=18811, node_paths=["/obj/test"], cook=True)
     )
 
@@ -118,10 +118,10 @@ def test_handle_connections(monkeypatch) -> None:
     source = FakeNode("/obj/src")
     dest = FakeNode("/obj/test")
     dest._connections = [FakeConnection(source, dest)]
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession(dest)))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    monkeypatch.setattr(node_inspect, "connect", FakeConnect(FakeSession(dest)))
+    monkeypatch.setattr(node_inspect, "localize", lambda value: value)
 
-    result = node.handle_connections(
+    result = node_inspect.handle_connections(
         Namespace(host="localhost", port=18811, node_path="/obj/test")
     )
 

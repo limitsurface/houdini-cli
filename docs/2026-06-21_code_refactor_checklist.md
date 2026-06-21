@@ -121,22 +121,22 @@ Exit criteria:
 
 Target module: `node.py` and new node command modules.
 
-- [ ] Create `houdini_cli/commands/node_references.py`.
-- [ ] Move reference payload collection and its remote script into `node_references.py`.
-- [ ] Reuse shared reference primitives from `parm_refs.py` where semantics match; keep node-specific payload assembly local.
-- [ ] Smoke-test node reference reporting against the selected HDA.
-- [ ] Create `houdini_cli/commands/node_lifecycle.py` for create, rename, copy, move, and delete behavior.
-- [ ] Create `houdini_cli/commands/node_nav.py` for network editor navigation.
-- [ ] Create `houdini_cli/commands/node_inspect.py` for get, errors, connections, and flags.
-- [ ] Keep parser registration and thin dispatch in `node.py`.
-- [ ] Preserve payload fields, command output, and node path semantics.
-- [ ] Add or update focused tests for each extracted responsibility.
-- [ ] Smoke-test each remote-backed node command group after extraction.
-- [ ] Run the full test suite.
+- [x] Create `houdini_cli/commands/node_references.py`.
+- [x] Move reference payload collection and its remote script into `node_references.py`.
+- [x] Reuse shared reference primitives from `parm_refs.py` where semantics match; keep node-specific payload assembly local.
+- [x] Smoke-test node reference reporting against the selected HDA.
+- [x] Create `houdini_cli/commands/node_lifecycle.py` for create, rename, copy, move, and delete behavior.
+- [x] Create `houdini_cli/commands/node_nav.py` for network editor navigation.
+- [x] Create `houdini_cli/commands/node_inspect.py` for get, errors, connections, and flags.
+- [x] Keep parser registration and thin dispatch in `node.py`.
+- [x] Preserve payload fields, command output, and node path semantics.
+- [x] Add or update focused tests for each extracted responsibility.
+- [x] Smoke-test each remote-backed node command group after extraction.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] `node.py` is a small command facade and each node workflow has a clear implementation owner.
+- [x] `node.py` is a small command facade and each node workflow has a clear implementation owner.
 
 ## Phase 6: OpenCL Context Split
 

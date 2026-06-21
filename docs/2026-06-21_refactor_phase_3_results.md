@@ -11,7 +11,7 @@ Phase: cross-cutting remote script infrastructure
 | `parm_refs.py` | Parameter search, reference rows, HDA external audit | Shared domain module | Migrated in Phase 3 |
 | `opencl.py` | Batched COP validation state | Command-specific inspection | OpenCL context split, Phase 6 |
 | `parm.py` | Definition default mutation; compact node parm rows | Main-thread mutation and command discovery | Parameter split, Phase 7 |
-| `node.py` | Node reference payload | Command-specific inspection | Node reference split, Phase 5 |
+| `node_references.py` | Node reference payload | Command-specific inspection | Migrated in Phase 5 |
 | `query.py` | Node traversal and neighbor rows | Reusable discovery | Query watchlist decision |
 | `nodetype.py` | Bulk node-type discovery and detail reads | Reusable discovery | Migrate when nodetype changes next |
 | `hda_inspect.py` | Definition and library discovery | Reusable discovery | Migrate when HDA inspection changes next |

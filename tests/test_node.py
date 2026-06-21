@@ -4,6 +4,10 @@ import pytest
 
 from houdini_cli.commands import node
 from houdini_cli.commands import node_common
+from houdini_cli.commands import node_inspect
+from houdini_cli.commands import node_lifecycle
+from houdini_cli.commands import node_nav
+from houdini_cli.commands import node_references
 
 
 class FakeNodeTypeCategory:
@@ -182,10 +186,20 @@ class FakeConnect:
         return _Ctx()
 
 
+def _patch_connect(monkeypatch, fake_connect) -> None:
+    for module in (node_inspect, node_lifecycle, node_nav):
+        monkeypatch.setattr(module, "connect", fake_connect)
+
+
+def _patch_localize(monkeypatch) -> None:
+    for module in (node_inspect, node_lifecycle, node_nav, node_references):
+        monkeypatch.setattr(module, "localize", lambda value: value)
+
+
 def test_handle_get(monkeypatch) -> None:
     fake = FakeNode()
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_get(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section=None)
@@ -197,8 +211,8 @@ def test_handle_get(monkeypatch) -> None:
 
 def test_handle_create(monkeypatch) -> None:
     parent = FakeNode("/obj", "obj")
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj": parent})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj": parent})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_create(
         Namespace(host="localhost", port=18811, parent_path="/obj", node_type="geo", name="demo")
@@ -209,8 +223,8 @@ def test_handle_create(monkeypatch) -> None:
 
 def test_handle_delete(monkeypatch) -> None:
     fake = FakeNode()
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_delete(Namespace(host="localhost", port=18811, node_path="/obj/test"))
     assert result["ok"] is True
@@ -220,8 +234,8 @@ def test_handle_delete(monkeypatch) -> None:
 
 def test_handle_rename(monkeypatch) -> None:
     fake = FakeNode("/obj/geo1/old", "old")
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({fake.path(): fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({fake.path(): fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_rename(
         Namespace(
@@ -255,8 +269,8 @@ def test_handle_copy_returns_path_map(monkeypatch) -> None:
             second.path(): second,
         }
     )
-    monkeypatch.setattr(node, "connect", FakeConnect(session))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(session))
+    _patch_localize(monkeypatch)
 
     result = node.handle_copy(
         Namespace(
@@ -287,8 +301,8 @@ def test_handle_move_returns_path_map(monkeypatch) -> None:
             first.path(): first,
         }
     )
-    monkeypatch.setattr(node, "connect", FakeConnect(session))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(session))
+    _patch_localize(monkeypatch)
 
     result = node.handle_move(
         Namespace(
@@ -304,8 +318,8 @@ def test_handle_move_returns_path_map(monkeypatch) -> None:
 
 def test_handle_flags_set(monkeypatch) -> None:
     fake = FakeNode()
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({fake.path(): fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({fake.path(): fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_flags_set(
         Namespace(
@@ -330,8 +344,8 @@ def test_handle_flags_set(monkeypatch) -> None:
 def test_handle_get_section_parms(monkeypatch) -> None:
     fake = FakeNode()
     fake.parmsAsData = lambda brief=False: {"brief": brief, "parms": True}
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_get(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="parms")
@@ -344,8 +358,8 @@ def test_handle_get_section_parms(monkeypatch) -> None:
 def test_handle_get_section_inputs(monkeypatch) -> None:
     fake = FakeNode()
     fake.inputsAsData = lambda: [{"from": "a", "to_index": 0}]
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_get(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="inputs")
@@ -364,8 +378,8 @@ def test_handle_get_section_references_external_only(monkeypatch) -> None:
         FakeParm("/obj/geo1/subnet1/child/external", [external]),
     ]
     root._children = [child]
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({root.path(): root})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({root.path(): root})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_get(
         Namespace(
@@ -385,8 +399,8 @@ def test_handle_get_section_references_external_only(monkeypatch) -> None:
 def test_handle_get_section_full(monkeypatch) -> None:
     fake = FakeNode()
     fake.asData = lambda **kwargs: {"full": True, "kwargs": kwargs}
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
 
     result = node.handle_get(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="full")
@@ -400,8 +414,8 @@ def test_handle_set_section_parms(monkeypatch) -> None:
     fake = FakeNode()
     called = {}
     fake.setParmsFromData = lambda payload: called.setdefault("payload", payload)
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "load_json_input", lambda raw: {"parms": 1})
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    monkeypatch.setattr(node_inspect, "load_json_input", lambda raw: {"parms": 1})
 
     result = node.handle_set(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="parms", json="{}")
@@ -414,8 +428,8 @@ def test_handle_set_section_inputs(monkeypatch) -> None:
     fake = FakeNode()
     called = {}
     fake.setInputsFromData = lambda payload: called.setdefault("payload", payload)
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "load_json_input", lambda raw: [{"from": "a"}])
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    monkeypatch.setattr(node_inspect, "load_json_input", lambda raw: [{"from": "a"}])
 
     result = node.handle_set(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="inputs", json="[]")
@@ -428,8 +442,8 @@ def test_handle_set_section_full(monkeypatch) -> None:
     fake = FakeNode()
     called = {}
     fake.setFromData = lambda payload: called.setdefault("payload", payload)
-    monkeypatch.setattr(node, "connect", FakeConnect(FakeSession({"/obj/test": fake})))
-    monkeypatch.setattr(node, "load_json_input", lambda raw: {"full": 1})
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    monkeypatch.setattr(node_inspect, "load_json_input", lambda raw: {"full": 1})
 
     result = node.handle_set(
         Namespace(host="localhost", port=18811, node_path="/obj/test", section="full", json="{}")
@@ -451,9 +465,8 @@ def test_handle_nav(monkeypatch) -> None:
     null.parent_node = network
     editor = FakeNetworkEditor()
 
-    monkeypatch.setattr(
-        node,
-        "connect",
+    _patch_connect(
+        monkeypatch,
         FakeConnect(
             FakeSession(
                 {
@@ -465,7 +478,7 @@ def test_handle_nav(monkeypatch) -> None:
             )
         ),
     )
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_localize(monkeypatch)
 
     result = node.handle_nav(
         Namespace(
@@ -497,9 +510,8 @@ def test_handle_nav_requires_same_parent(monkeypatch) -> None:
     null.parent_node = network_b
     editor = FakeNetworkEditor()
 
-    monkeypatch.setattr(
-        node,
-        "connect",
+    _patch_connect(
+        monkeypatch,
         FakeConnect(
             FakeSession(
                 {
@@ -510,7 +522,7 @@ def test_handle_nav_requires_same_parent(monkeypatch) -> None:
             )
         ),
     )
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_localize(monkeypatch)
 
     with pytest.raises(ValueError, match="same parent"):
         node.handle_nav(
@@ -531,9 +543,8 @@ def test_handle_nav_without_selection_clears_after_frame(monkeypatch) -> None:
     box.parent_node = network
     editor = FakeNetworkEditor()
 
-    monkeypatch.setattr(
-        node,
-        "connect",
+    _patch_connect(
+        monkeypatch,
         FakeConnect(
             FakeSession(
                 {
@@ -544,7 +555,7 @@ def test_handle_nav_without_selection_clears_after_frame(monkeypatch) -> None:
             )
         ),
     )
-    monkeypatch.setattr(node, "localize", lambda value: value)
+    _patch_localize(monkeypatch)
 
     result = node.handle_nav(
         Namespace(
