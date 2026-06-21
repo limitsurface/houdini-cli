@@ -316,6 +316,21 @@ HELP_TREE = {
                     "relative references are the default",
                 ],
             },
+            "find": {
+                "description": "Search parameter names, raw values, expressions, and resolved references on one node.",
+                "usage": "houdini-cli parm find <node-path> --query TEXT [--raw] [--expressions] [--resolved-targets] [--max-matches N]",
+                "notes": [
+                    "query matching checks names, paths, raw values, expressions, and resolved targets",
+                    "detail flags control which extra fields are returned in matching rows",
+                ],
+            },
+            "refs": {
+                "description": "List resolved parameter references on one node.",
+                "usage": "houdini-cli parm refs <node-path> [--external-to ROOT] [--max-refs N]",
+                "notes": [
+                    "--external-to marks references outside the supplied node or network root",
+                ],
+            },
             "template": {
                 "description": "Inspect or patch parameter-template UI and default metadata.",
                 "children": {

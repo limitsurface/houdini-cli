@@ -73,6 +73,21 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     reference_mode.add_argument("--absolute", action="store_true", help="Use an absolute HScript reference.")
     reference_parser.set_defaults(handler=handle_reference)
 
+    find_parser = parm_subparsers.add_parser("find", help="Search parameter names, values, expressions, and references on one node.")
+    find_parser.add_argument("node_path", help="Node path to inspect.")
+    find_parser.add_argument("--query", required=True, help="Case-insensitive text to search for.")
+    find_parser.add_argument("--raw", action="store_true", help="Include raw parameter values in matching rows.")
+    find_parser.add_argument("--expressions", action="store_true", help="Include expression text in matching rows.")
+    find_parser.add_argument("--resolved-targets", action="store_true", help="Include resolved referenced parameter paths.")
+    find_parser.add_argument("--max-matches", type=int, default=100, help="Maximum matching parameters to return.")
+    find_parser.set_defaults(handler=handle_find)
+
+    refs_parser = parm_subparsers.add_parser("refs", help="List resolved parameter references on one node.")
+    refs_parser.add_argument("node_path", help="Node path to inspect.")
+    refs_parser.add_argument("--external-to", help="Mark references outside this node/network root.")
+    refs_parser.add_argument("--max-refs", type=int, default=100, help="Maximum references to return.")
+    refs_parser.set_defaults(handler=handle_refs)
+
     template_parser = parm_subparsers.add_parser("template", help="Inspect or modify parameter templates.")
     template_subparsers = template_parser.add_subparsers(dest="parm_template_command", required=True)
 
@@ -337,6 +352,313 @@ def handle_reference(args: argparse.Namespace) -> dict:
                 "expression": expression,
                 "applied": True,
             }
+        )
+
+
+def _safe_raw_value(parm: Any) -> Any:
+    for method in ("rawValue", "unexpandedString"):
+        if not hasattr(parm, method):
+            continue
+        try:
+            return localize(getattr(parm, method)())
+        except Exception:
+            continue
+    try:
+        return localize(parm.valueAsData())
+    except Exception:
+        return None
+
+
+def _safe_expression(parm: Any) -> tuple[str | None, str | None]:
+    try:
+        expression = localize(parm.expression())
+        language = localize(parm.expressionLanguage().name()).lower()
+        return expression, language
+    except Exception:
+        return None, None
+
+
+def _target_paths(parm: Any) -> list[str]:
+    try:
+        return [localize(target.path()) for target in parm.references()]
+    except Exception:
+        return []
+
+
+def _within_root(path: str, root_path: str) -> bool:
+    node_path = path.rsplit("/", 1)[0]
+    return node_path == root_path or node_path.startswith(root_path.rstrip("/") + "/")
+
+
+def _parm_search_rows(
+    node: Any,
+    *,
+    query: str,
+    include_raw: bool,
+    include_expressions: bool,
+    include_targets: bool,
+    max_matches: int,
+) -> list[dict[str, Any]]:
+    needle = query.lower()
+    rows = []
+    seen: set[str] = set()
+    for parm in node.parms():
+        if _parm_template_type(parm) in SKIPPED_TEMPLATE_TYPES:
+            continue
+        path = localize(parm.path())
+        if path in seen:
+            continue
+        seen.add(path)
+        name = localize(parm.name())
+        tuple_name = _tuple_name(parm)
+        raw = _safe_raw_value(parm)
+        expression, language = _safe_expression(parm)
+        targets = _target_paths(parm)
+        haystacks = [name, tuple_name, "" if raw is None else str(raw), expression or "", *targets]
+        matches = []
+        if any(needle in item.lower() for item in (name, tuple_name)):
+            matches.append("name")
+        if raw is not None and needle in str(raw).lower():
+            matches.append("raw")
+        if expression and needle in expression.lower():
+            matches.append("expression")
+        if any(needle in target.lower() for target in targets):
+            matches.append("resolved_target")
+        if not any(needle in item.lower() for item in haystacks):
+            continue
+        row: dict[str, Any] = {
+            "parm_path": path,
+            "name": name,
+            "tuple": tuple_name,
+            "type": _tuple_type_label(parm),
+            "matches": matches,
+        }
+        if include_raw:
+            row["raw"] = raw
+        if include_expressions:
+            row["expression"] = expression
+            row["language"] = language
+        if include_targets:
+            row["resolved_targets"] = targets
+        rows.append(row)
+        if len(rows) >= max_matches:
+            break
+    return rows
+
+
+def _parm_refs_rows(node: Any, *, external_to: str | None, max_refs: int) -> list[dict[str, Any]]:
+    rows = []
+    for parm in node.parms():
+        if _parm_template_type(parm) in SKIPPED_TEMPLATE_TYPES:
+            continue
+        from_path = localize(parm.path())
+        for target_path in _target_paths(parm):
+            row = {"from_parm": from_path, "to_parm": target_path}
+            if external_to is not None:
+                row["external"] = not _within_root(target_path, external_to)
+            rows.append(row)
+            if len(rows) >= max_refs:
+                return rows
+    return rows
+
+
+_PARM_SEARCH_CODE = r"""
+import hou
+
+SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
+
+def _houdini_cli_parm_tuple_type(parm):
+    members = list(parm.tuple())
+    template_type = parm.parmTemplate().type().name()
+    return "{}{}".format(template_type, len(members)) if len(members) > 1 else template_type
+
+def _houdini_cli_parm_raw(parm):
+    for method in ("rawValue", "unexpandedString"):
+        if hasattr(parm, method):
+            try:
+                return getattr(parm, method)()
+            except Exception:
+                pass
+    try:
+        return parm.valueAsData()
+    except Exception:
+        return None
+
+def _houdini_cli_parm_expression(parm):
+    try:
+        return parm.expression(), parm.expressionLanguage().name().lower()
+    except Exception:
+        return None, None
+
+def _houdini_cli_parm_targets(parm):
+    try:
+        return [target.path() for target in parm.references()]
+    except Exception:
+        return []
+
+def _houdini_cli_within_root(parm_path, root_path):
+    node_path = parm_path.rsplit("/", 1)[0]
+    return node_path == root_path or node_path.startswith(root_path.rstrip("/") + "/")
+
+def _houdini_cli_parm_find(node_path, query, include_raw, include_expressions, include_targets, max_matches):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    needle = query.lower()
+    rows = []
+    seen = set()
+    for parm in node.parms():
+        if parm.parmTemplate().type().name() in SKIPPED_TEMPLATE_TYPES:
+            continue
+        path = parm.path()
+        if path in seen:
+            continue
+        seen.add(path)
+        name = parm.name()
+        tuple_name = parm.tuple().name()
+        raw = _houdini_cli_parm_raw(parm)
+        expression, language = _houdini_cli_parm_expression(parm)
+        targets = _houdini_cli_parm_targets(parm)
+        haystacks = [name, tuple_name, "" if raw is None else str(raw), expression or ""] + targets
+        if not any(needle in item.lower() for item in haystacks):
+            continue
+        matches = []
+        if any(needle in item.lower() for item in (name, tuple_name)):
+            matches.append("name")
+        if raw is not None and needle in str(raw).lower():
+            matches.append("raw")
+        if expression and needle in expression.lower():
+            matches.append("expression")
+        if any(needle in target.lower() for target in targets):
+            matches.append("resolved_target")
+        row = {
+            "parm_path": path,
+            "name": name,
+            "tuple": tuple_name,
+            "type": _houdini_cli_parm_tuple_type(parm),
+            "matches": matches,
+        }
+        if include_raw:
+            row["raw"] = raw
+        if include_expressions:
+            row["expression"] = expression
+            row["language"] = language
+        if include_targets:
+            row["resolved_targets"] = targets
+        rows.append(row)
+        if len(rows) >= max_matches:
+            break
+    return rows
+
+def _houdini_cli_parm_refs(node_path, external_to, max_refs):
+    node = hou.node(node_path)
+    if node is None:
+        raise ValueError("Node not found: " + node_path)
+    rows = []
+    for parm in node.parms():
+        if parm.parmTemplate().type().name() in SKIPPED_TEMPLATE_TYPES:
+            continue
+        for target_path in _houdini_cli_parm_targets(parm):
+            row = {"from_parm": parm.path(), "to_parm": target_path}
+            if external_to is not None:
+                row["external"] = not _houdini_cli_within_root(target_path, external_to)
+            rows.append(row)
+            if len(rows) >= max_refs:
+                return rows
+    return rows
+"""
+
+
+def _parm_find_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    query: str,
+    include_raw: bool,
+    include_expressions: bool,
+    include_targets: bool,
+    max_matches: int,
+) -> list[dict[str, Any]]:
+    if max_matches <= 0:
+        raise ValueError(f"Maximum matches must be positive: {max_matches}")
+    if not hasattr(session, "connection"):
+        node = _get_node(session, node_path)
+        return _parm_search_rows(
+            node,
+            query=query,
+            include_raw=include_raw,
+            include_expressions=include_expressions,
+            include_targets=include_targets,
+            max_matches=max_matches,
+        )
+    session.connection.execute(_PARM_SEARCH_CODE)
+    return localize(
+        session.connection.eval(
+            "_houdini_cli_parm_find("
+            f"{node_path!r}, {query!r}, {bool(include_raw)!r}, "
+            f"{bool(include_expressions)!r}, {bool(include_targets)!r}, {int(max_matches)!r})"
+        )
+    )
+
+
+def _parm_refs_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    external_to: str | None,
+    max_refs: int,
+) -> list[dict[str, Any]]:
+    if max_refs <= 0:
+        raise ValueError(f"Maximum refs must be positive: {max_refs}")
+    if not hasattr(session, "connection"):
+        node = _get_node(session, node_path)
+        return _parm_refs_rows(node, external_to=external_to, max_refs=max_refs)
+    session.connection.execute(_PARM_SEARCH_CODE)
+    return localize(
+        session.connection.eval(
+            f"_houdini_cli_parm_refs({node_path!r}, {external_to!r}, {int(max_refs)!r})"
+        )
+    )
+
+
+def handle_find(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        rows = _parm_find_in_houdini(
+            session,
+            args.node_path,
+            query=args.query,
+            include_raw=args.raw,
+            include_expressions=args.expressions,
+            include_targets=args.resolved_targets,
+            max_matches=args.max_matches,
+        )
+        return success_result(
+            {
+                "node": args.node_path,
+                "query": args.query,
+                "count": len(rows),
+                "items": rows,
+            },
+            meta={"limit": args.max_matches, "truncated": len(rows) >= args.max_matches},
+        )
+
+
+def handle_refs(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        rows = _parm_refs_in_houdini(
+            session,
+            args.node_path,
+            external_to=args.external_to,
+            max_refs=args.max_refs,
+        )
+        return success_result(
+            {
+                "node": args.node_path,
+                "external_to": args.external_to,
+                "count": len(rows),
+                "items": rows,
+            },
+            meta={"limit": args.max_refs, "truncated": len(rows) >= args.max_refs},
         )
 
 

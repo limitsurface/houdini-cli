@@ -36,11 +36,13 @@ def test_handle_help_group_lists_subcommands() -> None:
     assert result["data"]["subcommands"] == [
         "default",
         "expression",
+        "find",
         "full",
         "full-set",
         "get",
         "menu",
         "reference",
+        "refs",
         "set",
         "template",
         "text-set",

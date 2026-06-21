@@ -102,6 +102,17 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.parm_command == "reference"
     assert args.absolute is True
 
+    args = parser.parse_args(["parm", "find", "/obj/x", "--query", "/obj/geo1", "--raw", "--expressions"])
+    assert args.parm_command == "find"
+    assert args.node_path == "/obj/x"
+    assert args.query == "/obj/geo1"
+    assert args.raw is True
+    assert args.expressions is True
+
+    args = parser.parse_args(["parm", "refs", "/obj/x", "--external-to", "/obj/x"])
+    assert args.parm_command == "refs"
+    assert args.external_to == "/obj/x"
+
     args = parser.parse_args(["parm", "template", "set", "/obj/x/size", "--target", "definition", "--input", "-"])
     assert args.parm_template_command == "set"
     assert args.target == "definition"

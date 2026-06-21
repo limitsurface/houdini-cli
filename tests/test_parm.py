@@ -15,6 +15,9 @@ class FakeParm:
         template_type: str = "Float",
         at_default: bool = False,
         tuple_name: str | None = None,
+        raw=None,
+        expression: str | None = None,
+        references=None,
     ) -> None:
         self._name = name
         self._path = path
@@ -23,6 +26,9 @@ class FakeParm:
         self._at_default = at_default
         self._tuple_name = tuple_name or name
         self._tuple_members = [self]
+        self._raw = value if raw is None else raw
+        self._expression = expression
+        self._references = references or []
         self.last_value_payload = None
         self.last_full_payload = None
         self.last_scalar_payload = None
@@ -38,6 +44,24 @@ class FakeParm:
 
     def path(self):
         return self._path
+
+    def rawValue(self):
+        return self._raw
+
+    def expression(self):
+        if self._expression is None:
+            raise RuntimeError("no expression")
+        return self._expression
+
+    def expressionLanguage(self):
+        class _Language:
+            def name(self):
+                return "Hscript"
+
+        return _Language()
+
+    def references(self):
+        return self._references
 
     def parmTemplate(self):
         class _TemplateType:
@@ -158,6 +182,14 @@ class FakeNode:
 
     def parms(self):
         return self._parms
+
+
+class FakeTargetParm:
+    def __init__(self, path: str) -> None:
+        self._path = path
+
+    def path(self):
+        return self._path
 
 
 def _bind_tuple(tuple_name: str, *parms: FakeParm) -> None:
@@ -429,6 +461,152 @@ def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None
     assert compact["data"]["rows"][0][2].endswith("...")
     assert len(compact["data"]["rows"][0][2]) == 120
     assert full["data"]["rows"][0][2] == source
+
+
+def test_handle_find_searches_raw_expression_and_resolved_targets(monkeypatch) -> None:
+    external_target = FakeTargetParm("/obj/geo1/copnet1/controller/amount")
+    fake_node = FakeNode(
+        [
+            FakeParm(
+                name="raw_path",
+                path="/obj/x/raw_path",
+                value="/obj/geo1/copnet1",
+                template_type="String",
+            ),
+            FakeParm(
+                name="expr_path",
+                path="/obj/x/expr_path",
+                value=0.0,
+                expression='ch("../gain")',
+                template_type="Float",
+            ),
+            FakeParm(
+                name="ref_path",
+                path="/obj/x/ref_path",
+                value=1.0,
+                references=[external_target],
+                template_type="Float",
+            ),
+        ]
+    )
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    raw = parm.handle_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            query="copnet1",
+            raw=True,
+            expressions=False,
+            resolved_targets=False,
+            max_matches=10,
+        )
+    )
+    expr = parm.handle_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            query="../gain",
+            raw=False,
+            expressions=True,
+            resolved_targets=False,
+            max_matches=10,
+        )
+    )
+    target = parm.handle_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            query="controller",
+            raw=False,
+            expressions=False,
+            resolved_targets=True,
+            max_matches=10,
+        )
+    )
+
+    assert raw["data"]["items"][0]["matches"] == ["raw"]
+    assert raw["data"]["items"][0]["raw"] == "/obj/geo1/copnet1"
+    assert expr["data"]["items"][0]["matches"] == ["expression"]
+    assert expr["data"]["items"][0]["expression"] == 'ch("../gain")'
+    assert target["data"]["items"][0]["matches"] == ["resolved_target"]
+    assert target["data"]["items"][0]["resolved_targets"] == ["/obj/geo1/copnet1/controller/amount"]
+
+
+def test_handle_refs_marks_external_targets(monkeypatch) -> None:
+    fake_node = FakeNode(
+        [
+            FakeParm(
+                name="internal",
+                path="/obj/x/internal",
+                references=[FakeTargetParm("/obj/x/controller/amount")],
+            ),
+            FakeParm(
+                name="external",
+                path="/obj/x/external",
+                references=[FakeTargetParm("/obj/geo1/copnet1/controller/amount")],
+            ),
+        ]
+    )
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_refs(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            external_to="/obj/x",
+            max_refs=10,
+        )
+    )
+
+    assert result["data"]["items"] == [
+        {
+            "from_parm": "/obj/x/internal",
+            "to_parm": "/obj/x/controller/amount",
+            "external": False,
+        },
+        {
+            "from_parm": "/obj/x/external",
+            "to_parm": "/obj/geo1/copnet1/controller/amount",
+            "external": True,
+        },
+    ]
+
+
+def test_handle_find_does_not_match_only_containing_parm_path(monkeypatch) -> None:
+    fake_node = FakeNode(
+        [
+            FakeParm(
+                name="scale",
+                path="/obj/geo1/copnet1/asset1/scale",
+                value=1.0,
+                template_type="Float",
+            )
+        ]
+    )
+    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm, "localize", lambda value: value)
+
+    result = parm.handle_find(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/geo1/copnet1/asset1",
+            query="copnet1",
+            raw=False,
+            expressions=False,
+            resolved_targets=False,
+            max_matches=10,
+        )
+    )
+
+    assert result["data"]["items"] == []
 
 
 def test_missing_parm_raises() -> None:
