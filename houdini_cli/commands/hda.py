@@ -61,9 +61,17 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     definitions.add_argument("--category")
     definitions.add_argument("--namespace")
     definitions.add_argument("--name")
+    definitions.add_argument("--type-name")
+    definitions.add_argument("--sections", action="store_true")
+    definitions.add_argument("--max", type=int, default=50)
+    definitions.add_argument("--all", action="store_true")
     definitions.set_defaults(handler=handle_definitions)
 
     libraries = subs.add_parser("libraries", help="List loaded HDA libraries and definitions.")
+    libraries.add_argument("--library", help="Case-insensitive substring match for library paths.")
+    libraries.add_argument("--definition", help="Case-insensitive substring match for contained type names.")
+    libraries.add_argument("--max", type=int, default=50)
+    libraries.add_argument("--all", action="store_true")
     libraries.set_defaults(handler=handle_libraries)
 
     create = subs.add_parser("create", help="Convert a plain subnet into an HDA.")

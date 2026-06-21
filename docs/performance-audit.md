@@ -17,6 +17,8 @@ The first optimization pass produced these commits:
 - `9ba4334` - make `node errors` cooking explicit via `--cook`.
 - `ae75a01` - batch OpenCL COP validation reads.
 - `d12244b` - batch `node get --section references`.
+- 2026-06-21 follow-up - batch and cap broad `hda definitions` and
+  `hda libraries` discovery.
 
 Live benchmark evidence came from Houdini 21.0.729 against the camera-shake
 test scene, primarily `/obj/copnet1/test_with_this`. The broad pattern held
@@ -74,6 +76,46 @@ data in one result. Targeted single-parameter commands are usually fine.
 ## HDA Commands
 
 The newer HDA commands have several similar risks.
+
+### `hda definitions` and `hda libraries`
+
+File: `houdini_cli/commands/hda_inspect.py`
+
+The initial broad discovery commands still scanned every loaded HDA library
+from the client:
+
+```python
+for library in localize(session.hou.hda.loadedFiles()):
+    definitions.extend(session.hou.hda.definitionsInFile(library))
+```
+
+`hda definitions` then called `definition_summary()` for every matching
+definition, including section size reads, before returning the full result.
+`hda libraries` similarly collected type names through client-side remote HOM
+objects. During 2026-06-21 NTSC/VHS HDA dogfooding, unfiltered
+`hda definitions --namespace Scy` and `hda libraries` probes were associated
+with a live Houdini crash after long-running broad scans.
+
+Risk: high for sessions with many loaded libraries or definitions.
+
+Suggested fix: run definition/library discovery inside Houdini, filter before
+returning rows, cap broad results by default, and require an explicit `--all`
+for uncapped scans. Keep section size inspection behind `--sections`.
+
+Status: fixed in the 2026-06-21 follow-up.
+
+Observed timings in the live NTSC/VHS session:
+
+```text
+hda definitions --namespace Scy --max 50:             mean ~374 ms
+hda definitions --namespace Scy --max 50 --sections:  mean ~606 ms
+hda libraries --library scyTools --max 50:            mean ~190 ms
+```
+
+The `--sections` option was kept because omitting section size reads produced
+a meaningful saving. A temporary `--types` option for `hda libraries` was
+removed after batching made type-list inclusion effectively free in this
+fixture, preserving the older output shape without an extra flag.
 
 ### `hda parms inspect`
 

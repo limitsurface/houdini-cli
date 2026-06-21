@@ -485,11 +485,18 @@ HELP_TREE = {
             },
             "definitions": {
                 "description": "List HDA definitions by library, category, namespace, or name.",
-                "usage": "houdini-cli hda definitions [--library PATH] [--category CATEGORY] [--namespace NS] [--name TEXT]",
+                "usage": "houdini-cli hda definitions [--library PATH] [--category CATEGORY] [--namespace NS] [--name TEXT] [--type-name TEXT] [--sections] [--max N|--all]",
+                "notes": [
+                    "broad scans are capped by default; use filters first in large sessions",
+                    "--sections includes embedded section names and sizes, which is intentionally omitted by default",
+                ],
             },
             "libraries": {
                 "description": "List loaded HDA libraries and the definitions they provide.",
-                "usage": "houdini-cli hda libraries",
+                "usage": "houdini-cli hda libraries [--library TEXT] [--definition TEXT] [--max N|--all]",
+                "notes": [
+                    "broad scans are capped by default; use filters first in large sessions",
+                ],
             },
             "package": {
                 "description": "Create, publish, and validate an HDA from an existing plain subnet.",
