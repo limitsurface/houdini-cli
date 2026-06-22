@@ -94,6 +94,45 @@ Integer pixel math produces square pixel blocks regardless of image dimensions. 
 | `?` | Optional binding; test with `#if @name.bound` | `#bind layer mask?` |
 | `!&` | Writable raw image, commonly used for aligned output | `#bind layer !&dst` |
 
+### Layer Types and Defaults
+
+OpenCL COP layer binds can force the generated COP input or output type by
+adding a type token after the layer name and modifiers. This was verified in
+Houdini 21.0.729 with a fresh OpenCL COP:
+
+| COP type | `#bind` token | Example |
+| :--- | :--- | :--- |
+| Varying Layer | `floatn` | `#bind layer src? floatn` |
+| ID | `int` | `#bind layer id? int` |
+| Mono | `float` | `#bind layer depth? float` |
+| UV | `float2` | `#bind layer uv? float2` |
+| RGB | `float3` | `#bind layer rgb? float3` |
+| RGBA | `float4` | `#bind layer rgba? float4` |
+
+The same suffix works for writable outputs:
+
+```c
+#bind layer depth? float val=0
+#bind layer !&depth_out float
+```
+
+For optional typed layer inputs, `val=` supplies real default layer data when
+the input is unwired:
+
+```c
+#bind layer mask? float val=0.5
+#bind layer uv? float2 val={0.25, 0.75}
+#bind layer color? float3 val={0.1, 0.2, 0.3}
+#bind layer plate? float4 val={0.1, 0.2, 0.3, 1}
+```
+
+Prefer explicit types when relying on `val=` defaults. In live tests,
+unconnected typed optional inputs sampled these defaults directly. Geometry,
+Metadata, and VDB output/input type tokens were not confirmed through
+`#bind layer`; attempts such as `geo`, `ivdb`, `fvdb`, `vvdb`, and `fnvdb`
+left generated signatures as Varying Layer and should be treated as unknown
+until separately verified.
+
 ### Parameter Defaults
 
 For scalar/vector controls, declare OpenCL parameters with an explicit `val=`
