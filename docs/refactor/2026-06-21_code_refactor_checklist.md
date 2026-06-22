@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-Source: `docs/2026-06-21_code_refactor_candidates.md`
+Source: `2026-06-21_code_refactor_candidates.md`
 
 Scope: production code under `houdini_cli/`. The goal is to reduce module size and ownership overlap without changing command syntax, output contracts, Houdini behavior, or supported fallback paths.
 

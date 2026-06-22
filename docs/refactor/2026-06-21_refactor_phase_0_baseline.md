@@ -2,7 +2,7 @@
 
 Date: 2026-06-21
 
-This baseline supports `docs/2026-06-21_code_refactor_checklist.md`. It records the contracts and live checks that should remain stable through the refactor.
+This baseline supports `2026-06-21_code_refactor_checklist.md`. It records the contracts and live checks that should remain stable through the refactor.
 
 ## Automated Tests
 

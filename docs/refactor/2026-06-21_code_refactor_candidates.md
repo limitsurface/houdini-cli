@@ -156,4 +156,4 @@ This would make future Houdini-main-thread fixes easier to review, but it should
 7. Split the remaining parameter workflows after the shared reference and remote-script patterns are settled.
 8. Reassess every watchlist module and refactor only where current evidence supports it.
 
-The executable phase plan and acceptance gates are tracked in `docs/2026-06-21_code_refactor_checklist.md`.
+The executable phase plan and acceptance gates are tracked in `2026-06-21_code_refactor_checklist.md`.

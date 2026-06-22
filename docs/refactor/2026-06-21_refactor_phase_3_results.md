@@ -30,7 +30,7 @@ No embedded remote execution was found in `attrib.py` or `session.py` at this ph
 - Added `houdini_cli/remote/parm_refs.py` with three registered entrypoints.
 - Moved the shared parameter/HDA reference source out of the command module.
 - Replaced handwritten call-expression f-strings with registered aliases and centralized argument encoding.
-- Added `docs/remote-script-conventions.md` for future migrations.
+- Added `remote-script-conventions.md` for future migrations.
 
 The abstraction deliberately does not cache installation, impose result schemas, or wrap user code. Those additions are not justified by the current command paths.
 

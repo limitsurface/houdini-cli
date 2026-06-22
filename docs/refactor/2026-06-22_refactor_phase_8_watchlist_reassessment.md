@@ -2,7 +2,7 @@
 
 Date: 2026-06-22
 
-Scope: optional refactor candidates from `docs/2026-06-21_code_refactor_checklist.md` after Phases 1-7.
+Scope: optional refactor candidates from `2026-06-21_code_refactor_checklist.md` after Phases 1-7.
 
 This phase is intentionally evidence-driven. The goal is to decide whether any remaining production module still has enough responsibility spread, remote-script duplication, or change pressure to justify another extraction now.
 
