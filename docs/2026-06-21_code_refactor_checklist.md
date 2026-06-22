@@ -187,46 +187,46 @@ These items are explicitly optional. Start one only when change pressure, duplic
 
 ### `hda_parms.py`
 
-- [ ] Re-measure size, function count, and responsibility spread after Phases 1, 3, and 7.
-- [ ] Decide whether HDA interface inspection, application, promotion, and defaults now warrant separate modules.
-- [ ] If proceeding, extract one cohesive operation group at a time and preserve definition-editing/main-thread behavior.
-- [ ] Add focused tests and live HDA smoke coverage for every extracted mutation path.
+- [x] Re-measure size, function count, and responsibility spread after Phases 1, 3, and 7.
+- [x] Decide whether HDA interface inspection, application, promotion, and defaults now warrant separate modules.
+- [x] If proceeding, extract one cohesive operation group at a time and preserve definition-editing/main-thread behavior.
+- [x] Add focused tests and live HDA smoke coverage for every extracted mutation path.
 
 ### `query.py`
 
-- [ ] Reassess if traversal modes or performance-sensitive paths have grown.
-- [ ] If proceeding, separate traversal/filtering from result summaries and remote payload collection.
-- [ ] Run query performance benchmarks before and after any extraction.
+- [x] Reassess if traversal modes or performance-sensitive paths have grown.
+- [x] If proceeding, separate traversal/filtering from result summaries and remote payload collection.
+- [x] Run query performance benchmarks before and after any extraction.
 
 ### `attrib.py`
 
-- [ ] Reassess responsibility spread and remote-script duplication.
-- [ ] Split only if attribute discovery, reads, writes, or formatting develop independent change pressure.
+- [x] Reassess responsibility spread and remote-script duplication.
+- [x] Split only if attribute discovery, reads, writes, or formatting develop independent change pressure.
 
 ### `session.py`
 
-- [ ] Reassess responsibility spread and lifecycle complexity.
-- [ ] Split only if session state, transport, or command orchestration cease to be cohesive.
+- [x] Reassess responsibility spread and lifecycle complexity.
+- [x] Split only if session state, transport, or command orchestration cease to be cohesive.
 
 ### `recipe.py` And `recipe_common.py`
 
-- [ ] Review their boundary together rather than treating file length alone as a problem.
-- [ ] Consolidate or split only where recipe parsing, validation, execution, and shared helpers have demonstrably separate ownership.
+- [x] Review their boundary together rather than treating file length alone as a problem.
+- [x] Consolidate or split only where recipe parsing, validation, execution, and shared helpers have demonstrably separate ownership.
 
 ### `shelf.py`
 
-- [ ] Reassess responsibility spread and remote-script duplication.
-- [ ] Split only if shelf discovery and mutation workflows grow independently.
+- [x] Reassess responsibility spread and remote-script duplication.
+- [x] Split only if shelf discovery and mutation workflows grow independently.
 
 ### `hda_validate.py`
 
-- [ ] Remove reference-audit helpers superseded by `parm_refs.py` in Phase 1.
-- [ ] Reassess the remaining validators after shared remote infrastructure is established.
-- [ ] Extract validator families only if the module remains difficult to review or extend.
+- [x] Remove reference-audit helpers superseded by `parm_refs.py` in Phase 1.
+- [x] Reassess the remaining validators after shared remote infrastructure is established.
+- [x] Extract validator families only if the module remains difficult to review or extend.
 
 Exit criteria:
 
-- [ ] Every watchlist module has a recorded keep-as-is or refactor decision based on current evidence, not line count alone.
+- [x] Every watchlist module has a recorded keep-as-is or refactor decision based on current evidence, not line count alone.
 
 ## Final Consolidation
 
