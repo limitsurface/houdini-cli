@@ -142,23 +142,23 @@ Exit criteria:
 
 Target module: `opencl.py` and new OpenCL modules.
 
-- [ ] Create `houdini_cli/commands/opencl_bindings.py` for binding rows, value conversion, compact summaries, and hints.
-- [ ] Create `houdini_cli/commands/opencl_cop.py` for COP signatures, state, connection validation, and signature synchronization.
-- [ ] Create `houdini_cli/commands/opencl_sop.py` for SOP binding row validation and synchronization.
-- [ ] Create `houdini_cli/commands/opencl_dop.py` for Gas OpenCL DOP rows and synchronization.
-- [ ] Move the COP remote validation script using the Phase 3 remote-script pattern.
-- [ ] Keep parser registration plus sync/validate orchestration in `opencl.py`.
-- [ ] Make context dispatch explicit and exhaustive.
-- [ ] Preserve optional output normalization and generated spare behavior.
-- [ ] Add or update focused tests for bindings and each COP/SOP/DOP context.
-- [ ] Compare representative sync and validate output with the baseline.
-- [ ] Smoke-test COP, SOP, and DOP paths where suitable live nodes are available; record any unavailable context.
-- [ ] Run the OpenCL performance benchmarks and investigate any material regression.
-- [ ] Run the full test suite.
+- [x] Create `houdini_cli/commands/opencl_bindings.py` for binding rows, value conversion, compact summaries, and hints.
+- [x] Create `houdini_cli/commands/opencl_cop.py` for COP signatures, state, connection validation, and signature synchronization.
+- [x] Create `houdini_cli/commands/opencl_sop.py` for SOP binding row validation and synchronization.
+- [x] Create `houdini_cli/commands/opencl_dop.py` for Gas OpenCL DOP rows and synchronization.
+- [x] Move the COP remote validation script using the Phase 3 remote-script pattern.
+- [x] Keep parser registration plus sync/validate orchestration in `opencl.py`.
+- [x] Make context dispatch explicit and exhaustive.
+- [x] Preserve optional output normalization and generated spare behavior.
+- [x] Add or update focused tests for bindings and each COP/SOP/DOP context.
+- [x] Compare representative sync and validate output with the baseline.
+- [x] Smoke-test COP, SOP, and DOP paths where suitable live nodes are available; record any unavailable context.
+- [x] Run the OpenCL performance benchmarks and investigate any material regression.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] `opencl.py` is an orchestration facade and context-specific behavior no longer shares a monolithic implementation module.
+- [x] `opencl.py` is an orchestration facade and context-specific behavior no longer shares a monolithic implementation module.
 
 ## Phase 7: Remaining Parameter Command Split
 

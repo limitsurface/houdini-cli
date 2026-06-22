@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from houdini_cli.commands import opencl
+from houdini_cli.commands import opencl, opencl_cop
 
 
 class FakeParm:
@@ -775,7 +775,7 @@ def test_handle_sync_preserves_existing_signature_order(monkeypatch) -> None:
 
 
 def test_signature_type_maps_vdb() -> None:
-    assert opencl._signature_type("vdb", {"vdbtype": "float"}, output=False) == "fvdb"
+    assert opencl_cop.signature_type("vdb", {"vdbtype": "float"}, output=False) == "fvdb"
 
 
 def test_handle_validate_reports_signature_drift_and_invalid_connection(monkeypatch) -> None:
@@ -1002,9 +1002,9 @@ def test_existing_signature_unwraps_parms_as_data_values(monkeypatch) -> None:
     node_obj._parms.pop("outputs")
     monkeypatch.setattr(opencl, "localize", lambda value: value)
 
-    assert opencl._existing_signature_entries(node_obj, output=False) == [
+    assert opencl_cop.existing_signature_entries(node_obj, output=False) == [
         {"name": "src", "type": "floatn", "optional": False}
     ]
-    assert opencl._existing_signature_entries(node_obj, output=True) == [
+    assert opencl_cop.existing_signature_entries(node_obj, output=True) == [
         {"name": "dst", "type": "floatn", "optional": False}
     ]

@@ -9,7 +9,7 @@ Phase: cross-cutting remote script infrastructure
 | Owner | Remote responsibility | Classification | Migration point |
 | --- | --- | --- | --- |
 | `parm_refs.py` | Parameter search, reference rows, HDA external audit | Shared domain module | Migrated in Phase 3 |
-| `opencl.py` | Batched COP validation state | Command-specific inspection | OpenCL context split, Phase 6 |
+| `opencl.py` | Batched COP validation state | Command-specific inspection | Migrated in Phase 6 |
 | `parm.py` | Definition default mutation; compact node parm rows | Main-thread mutation and command discovery | Parameter split, Phase 7 |
 | `node_references.py` | Node reference payload | Command-specific inspection | Migrated in Phase 5 |
 | `query.py` | Node traversal and neighbor rows | Reusable discovery | Query watchlist decision |
