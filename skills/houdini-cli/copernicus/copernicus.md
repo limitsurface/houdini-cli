@@ -102,7 +102,6 @@ Houdini 21.0.729 with a fresh OpenCL COP:
 
 | COP type | `#bind` token | Example |
 | :--- | :--- | :--- |
-| Varying Layer | `floatn` | `#bind layer src? floatn` |
 | ID | `int` | `#bind layer id? int` |
 | Mono | `float` | `#bind layer depth? float` |
 | UV | `float2` | `#bind layer uv? float2` |
