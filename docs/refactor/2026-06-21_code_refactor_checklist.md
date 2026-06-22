@@ -230,20 +230,20 @@ Exit criteria:
 
 ## Final Consolidation
 
-- [ ] Remove obsolete compatibility imports, dead helpers, and superseded remote scripts.
-- [ ] Check import direction for cycles and unclear ownership.
-- [ ] Confirm parser registration remains discoverable and command groups remain complete.
-- [ ] Confirm help topics cover the final parser command surface.
-- [ ] Run static checks and formatting used by the repository.
-- [ ] Run the complete performance benchmark suite and compare it with the Phase 0 baseline.
-- [ ] Run the full automated test suite.
-- [ ] Run the complete live Houdini smoke matrix against the test HDA.
-- [ ] Update architecture or contributor documentation with the final module map and remote-script conventions.
-- [ ] Re-run the production-code size/responsibility survey and record any remaining candidates.
+- [x] Remove obsolete compatibility imports, dead helpers, and superseded remote scripts.
+- [x] Check import direction for cycles and unclear ownership.
+- [x] Confirm parser registration remains discoverable and command groups remain complete.
+- [x] Confirm help topics cover the final parser command surface.
+- [x] Run static checks and formatting used by the repository.
+- [x] Run the complete performance benchmark suite and compare it with the Phase 0 baseline.
+- [x] Run the full automated test suite.
+- [x] Run the complete live Houdini smoke matrix against the test HDA.
+- [x] Update architecture or contributor documentation with the final module map and remote-script conventions.
+- [x] Re-run the production-code size/responsibility survey and record any remaining candidates.
 
 Completion criteria:
 
-- [ ] High-priority and medium-priority modules have clear ownership boundaries.
-- [ ] Remote Houdini code follows one documented, tested pattern.
-- [ ] Watchlist decisions are documented, including intentional non-refactors.
-- [ ] CLI behavior, performance, and live Houdini workflows remain stable.
+- [x] High-priority and medium-priority modules have clear ownership boundaries.
+- [x] Remote Houdini code follows one documented, tested pattern.
+- [x] Watchlist decisions are documented, including intentional non-refactors.
+- [x] CLI behavior, performance, and live Houdini workflows remain stable.
