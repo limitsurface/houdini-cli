@@ -164,22 +164,22 @@ Exit criteria:
 
 Target module: `parm.py` and new parameter command modules.
 
-- [ ] Create `houdini_cli/commands/parm_values.py` for get, full, menu, set, tuple, text, and full-set behavior.
-- [ ] Create `houdini_cli/commands/parm_expressions.py` for expression get/set/clear and reference creation.
-- [ ] Create `houdini_cli/commands/parm_templates.py` for template get/set, defaults, and definition-default remote behavior.
-- [ ] Create `houdini_cli/commands/node_parms.py` for `node parms list/find` discovery.
-- [ ] Adopt the Phase 3 remote-script pattern for extracted remote operations.
-- [ ] Keep parser registration and thin dispatch in `parm.py`.
-- [ ] Preserve scalar, tuple, multiparm, expression-language, raw-text, template, and definition-default semantics.
-- [ ] Add or update focused tests for each extracted responsibility.
-- [ ] Compare representative JSON and text output with the baseline.
-- [ ] Smoke-test value, expression, template, default, and `node parms` workflows against the selected HDA.
-- [ ] Run the parameter command performance benchmarks and investigate any material regression.
-- [ ] Run the full test suite.
+- [x] Create `houdini_cli/commands/parm_values.py` for get, full, menu, set, tuple, text, and full-set behavior.
+- [x] Create `houdini_cli/commands/parm_expressions.py` for expression get/set/clear and reference creation.
+- [x] Create `houdini_cli/commands/parm_templates.py` for template get/set, defaults, and definition-default remote behavior.
+- [x] Create `houdini_cli/commands/node_parms.py` for `node parms list/find` discovery.
+- [x] Adopt the Phase 3 remote-script pattern for extracted remote operations.
+- [x] Keep parser registration and thin dispatch in `parm.py`.
+- [x] Preserve scalar, tuple, multiparm, expression-language, raw-text, template, and definition-default semantics.
+- [x] Add or update focused tests for each extracted responsibility.
+- [x] Compare representative JSON and text output with the baseline.
+- [x] Smoke-test value, expression, template, default, and `node parms` workflows against the selected HDA.
+- [x] Run the parameter command performance benchmarks and investigate any material regression.
+- [x] Run the full test suite.
 
 Exit criteria:
 
-- [ ] `parm.py` is an orchestration facade and high-risk template/default mutation is isolated from routine value operations.
+- [x] `parm.py` is an orchestration facade and high-risk template/default mutation is isolated from routine value operations.
 
 ## Phase 8: Watchlist And Optional Refactors
 

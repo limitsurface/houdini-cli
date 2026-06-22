@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 from typing import Any
 
+from ..format.envelopes import success_result
 from ..remote.parm_refs import PARM_REFERENCE_REMOTE
-from ..transport.rpyc import localize
+from ..transport.rpyc import connect, localize
 
 CHANNEL_REF_PATTERN = re.compile(r"\bch(?:s|f|i|v|p|raw)?\s*\(\s*['\"]([^'\"]+)['\"]")
 SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
@@ -299,6 +301,49 @@ def parm_refs_in_houdini(
             int(max_refs),
         )
     )
+
+
+def handle_find(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        rows = parm_find_in_houdini(
+            session,
+            args.node_path,
+            query=args.query,
+            include_raw=args.raw,
+            include_expressions=args.expressions,
+            include_targets=args.resolved_targets,
+            max_matches=args.max_matches,
+        )
+        return success_result(
+            {
+                "node": args.node_path,
+                "query": args.query,
+                "count": len(rows),
+                "items": rows,
+            },
+            meta={"limit": args.max_matches, "truncated": len(rows) >= args.max_matches},
+        )
+
+
+def handle_refs(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        rows = parm_refs_in_houdini(
+            session,
+            args.node_path,
+            external_to=args.external_to,
+            recursive=args.recursive,
+            max_refs=args.max_refs,
+        )
+        return success_result(
+            {
+                "node": args.node_path,
+                "external_to": args.external_to,
+                "recursive": bool(args.recursive),
+                "count": len(rows),
+                "items": rows,
+            },
+            meta={"limit": args.max_refs, "truncated": len(rows) >= args.max_refs},
+        )
 
 
 def _contained_nodes(node: Any) -> list[Any]:

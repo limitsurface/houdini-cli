@@ -2,7 +2,14 @@ from argparse import Namespace
 
 import pytest
 
-from houdini_cli.commands import parm
+from houdini_cli.commands import (
+    node_parms,
+    parm,
+    parm_common,
+    parm_refs,
+    parm_templates,
+    parm_values,
+)
 
 
 class FakeParm:
@@ -219,8 +226,9 @@ def _bind_tuple(tuple_name: str, *parms: FakeParm) -> None:
 
 def test_handle_get_default(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "localize", lambda value: value)
 
     result = parm.handle_get(Namespace(host="localhost", port=18811, parm_path="/obj/x"))
     assert result["ok"] is True
@@ -232,8 +240,9 @@ def test_handle_get_tuple_component_returns_scalar_value(monkeypatch) -> None:
     ty = FakeParm(name="ty", path="/obj/x/ty", value=[1.5, 0.0, 0.0], template_type="Float")
     tz = FakeParm(name="tz", path="/obj/x/tz", value=[1.5, 0.0, 0.0], template_type="Float")
     _bind_tuple("t", tx, ty, tz)
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(tx)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(tx)))
+    monkeypatch.setattr(parm_values, "localize", lambda value: value)
 
     result = parm.handle_get(Namespace(host="localhost", port=18811, parm_path="/obj/x/tx"))
     assert result["ok"] is True
@@ -242,8 +251,8 @@ def test_handle_get_tuple_component_returns_scalar_value(monkeypatch) -> None:
 
 def test_handle_full(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "localize", lambda value: value)
 
     result = parm.handle_full(Namespace(host="localhost", port=18811, parm_path="/obj/x"))
     assert result["ok"] is True
@@ -255,8 +264,8 @@ def test_handle_menu(monkeypatch) -> None:
     fake_parm.menuItems = lambda: ("poly", "mesh")
     fake_parm.menuLabels = lambda: ("Polygon", "Mesh")
     fake_parm.evalAsString = lambda: "poly"
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "localize", lambda value: value)
 
     result = parm.handle_menu(Namespace(host="localhost", port=18811, parm_path="/obj/x"))
     assert result["ok"] is True
@@ -269,7 +278,7 @@ def test_handle_menu(monkeypatch) -> None:
 
 def test_handle_set_default(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
 
     result = parm.handle_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", value="hello")
@@ -280,7 +289,7 @@ def test_handle_set_default(monkeypatch) -> None:
 
 def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
 
     result = parm.handle_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", value="4.5")
@@ -293,8 +302,8 @@ def test_handle_set_default_scalar_uses_plain_set(monkeypatch) -> None:
 def test_definition_default_executes_entire_edit_inside_houdini(monkeypatch) -> None:
     session = FakeSession(None)
     session.connection = FakeConnection()
-    monkeypatch.setattr(parm, "connect", FakeConnect(session))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_templates, "connect", FakeConnect(session))
+    monkeypatch.setattr(parm_templates, "localize", lambda value: value)
 
     result = parm.handle_default_set(
         Namespace(
@@ -315,8 +324,8 @@ def test_definition_default_executes_entire_edit_inside_houdini(monkeypatch) -> 
 
 def test_handle_text_set(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "read_text_input", lambda _value: "hello\nworld\n")
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "read_text_input", lambda _value: "hello\nworld\n")
 
     result = parm.handle_text_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", input="snippet.txt")
@@ -327,8 +336,8 @@ def test_handle_text_set(monkeypatch) -> None:
 
 def test_handle_full_set(monkeypatch) -> None:
     fake_parm = FakeParm()
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(fake_parm)))
-    monkeypatch.setattr(parm, "read_json_input", lambda _value: {"b": 2})
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(fake_parm)))
+    monkeypatch.setattr(parm_values, "read_json_input", lambda _value: {"b": 2})
 
     result = parm.handle_full_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x", input="payload.json")
@@ -343,8 +352,9 @@ def test_handle_tuple_set(monkeypatch) -> None:
     ty = FakeParm(name="ty", path="/obj/x/ty", value=[0.0, 0.0, 0.0], template_type="Float")
     tz = FakeParm(name="tz", path="/obj/x/tz", value=[0.0, 0.0, 0.0], template_type="Float")
     _bind_tuple("t", tx, ty, tz)
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(tx)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(parm_values, "connect", FakeConnect(FakeSession(tx)))
+    monkeypatch.setattr(parm_values, "localize", lambda value: value)
 
     result = parm.handle_tuple_set(
         Namespace(host="localhost", port=18811, parm_path="/obj/x/t", values=["1.5", "0", "-2"])
@@ -370,8 +380,9 @@ def test_handle_node_parms_list(monkeypatch) -> None:
             tz,
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
 
     result = parm.handle_node_parms_list(
         Namespace(host="localhost", port=18811, node_path="/obj/x", non_default=False, max_parms=10, values=True)
@@ -400,8 +411,9 @@ def test_handle_node_parms_find(monkeypatch) -> None:
             tz,
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
 
     result = parm.handle_node_parms_find(
         Namespace(
@@ -427,8 +439,9 @@ def test_handle_node_parms_find_matches_tuple_component_names(monkeypatch) -> No
     _bind_tuple("t", tx, ty, tz)
     invert = FakeParm(name="invertxform", path="/obj/x/invertxform", value=False, template_type="Toggle", at_default=True)
     fake_node = FakeNode([tx, ty, tz, invert])
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
 
     result = parm.handle_node_parms_find(
         Namespace(
@@ -451,8 +464,9 @@ def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None
     fake_node = FakeNode(
         [FakeParm(name="kernelcode", path="/obj/x/kernelcode", value=source, template_type="String")]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
 
     compact = parm.handle_node_parms_list(
         Namespace(
@@ -508,8 +522,8 @@ def test_handle_find_searches_raw_expression_and_resolved_targets(monkeypatch) -
             ),
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
     raw = parm.handle_find(
         Namespace(
@@ -571,8 +585,8 @@ def test_handle_refs_marks_external_targets(monkeypatch) -> None:
             ),
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
     result = parm.handle_refs(
         Namespace(
@@ -610,8 +624,8 @@ def test_handle_refs_recursive_includes_child_nodes(monkeypatch) -> None:
         ]
     )
     fake_node = FakeNode([], children=[child])
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
     result = parm.handle_refs(
         Namespace(
@@ -641,8 +655,8 @@ def test_handle_refs_resolves_channel_refs_when_hom_references_are_empty(monkeyp
             FakeParm(name="target", path="/obj/x/target"),
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
     result = parm.handle_refs(
         Namespace(
@@ -675,8 +689,8 @@ def test_handle_find_does_not_match_only_containing_parm_path(monkeypatch) -> No
             )
         ]
     )
-    monkeypatch.setattr(parm, "connect", FakeConnect(FakeSession(None, fake_node)))
-    monkeypatch.setattr(parm, "localize", lambda value: value)
+    monkeypatch.setattr(parm_refs, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(parm_refs, "localize", lambda value: value)
 
     result = parm.handle_find(
         Namespace(
@@ -696,4 +710,4 @@ def test_handle_find_does_not_match_only_containing_parm_path(monkeypatch) -> No
 
 def test_missing_parm_raises() -> None:
     with pytest.raises(ValueError, match="Parameter not found"):
-        parm._get_parm(FakeSession(None), "/obj/missing")
+        parm_common.get_parm(FakeSession(None), "/obj/missing")

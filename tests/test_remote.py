@@ -1,8 +1,10 @@
 import pytest
 
 from houdini_cli.remote import RemoteModule, python_literal
+from houdini_cli.remote.node_parms import NODE_PARMS_REMOTE
 from houdini_cli.remote.node_references import NODE_REFERENCE_REMOTE
 from houdini_cli.remote.opencl_cop import OPENCL_COP_REMOTE
+from houdini_cli.remote.parm_templates import PARM_TEMPLATE_REMOTE
 
 
 class FakeConnection:
@@ -66,4 +68,16 @@ def test_node_reference_remote_builds_registered_payload_call() -> None:
 def test_opencl_cop_remote_builds_registered_state_call() -> None:
     assert OPENCL_COP_REMOTE.call("state", "/obj/copnet1/opencl1") == (
         "_houdini_cli_opencl_cop_validation_state('/obj/copnet1/opencl1')"
+    )
+
+
+def test_node_parms_remote_builds_registered_rows_call() -> None:
+    assert NODE_PARMS_REMOTE.call("rows", "/obj/geo1/test", "scale", None, False, True, 20) == (
+        "_houdini_cli_parm_rows('/obj/geo1/test', 'scale', None, False, True, 20)"
+    )
+
+
+def test_parm_template_remote_builds_registered_default_call() -> None:
+    assert PARM_TEMPLATE_REMOTE.call("set_definition_default", "/obj/geo1/hda1/scale", 0.75) == (
+        "_houdini_cli_set_definition_default('/obj/geo1/hda1/scale', 0.75)"
     )
