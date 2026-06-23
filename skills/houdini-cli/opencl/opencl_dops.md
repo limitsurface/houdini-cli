@@ -126,6 +126,10 @@ generated binding dictionary before relying on guessed syntax.
 Gas Substep may invoke a microsolver with a timestep smaller than the frame
 timestep. Enable Include Timestep and use `@TimeInc`.
 
+Unlike OpenCL COP/SOP nodes, Gas OpenCL's prepared docs do not expose a
+generic kernel `Iterations` option; use Gas Substep or solver-specific
+iteration parameters when a DOP microsolver must run repeatedly.
+
 Percentage decay:
 
 ```c

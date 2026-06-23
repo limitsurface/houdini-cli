@@ -149,6 +149,10 @@ those controls. Bare declarations such as `#bind parm scale float` initialize
 the generated control to `0`, which can make a kernel appear broken even though
 the bindings are valid.
 
+The OpenCL COP Options tab has `options_iterations` and `options_iteration`:
+use them to re-execute one kernel on-GPU and bind the current `@Iteration`
+instead of building long chains of repeated OpenCL nodes.
+
 ### Time Bindings
 
 `@Time` is available only when **Include Time** is enabled. `@TimeInc` is
