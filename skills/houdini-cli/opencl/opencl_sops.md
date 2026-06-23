@@ -273,8 +273,8 @@ houdini-cli node errors <node-path>
 houdini-cli attrib get <node-path> P --class point --limit 5
 ```
 
-The OpenCL SOP also has generic `iterations` and `iteration` options: verified
-in Houdini 21.0.729, they re-execute one kernel on-GPU and expose `@Iteration`.
+Use `iterations` to re-execute one OpenCL SOP kernel on-GPU; enable
+`iteration` when the kernel needs the current `@Iteration` value.
 
 ## Common Failure Modes
 
