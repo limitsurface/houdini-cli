@@ -207,6 +207,60 @@ and dedicated documentation before modifying their solver structure.
 
 ## Common Patterns
 
+### Atomic Accumulation
+
+User-authored OpenCL COP kernels can use atomics when the target layer is bound
+as writable/inout with `&`. Regular layer bindings do not expose raw storage;
+use the generated `.data` pointer on an `&` binding:
+
+```c
+#bind layer src float
+#bind layer &counts int
+
+@KERNEL
+{
+    global int *data = @counts.data;
+    atomic_inc(&data[0]);
+}
+```
+
+This was verified in Houdini 21.0.729 with a 64x64 source layer: the atomic
+integer counter sampled as `4096`, matching the work-item count.
+
+For float accumulation, use a compare-and-swap loop because portable native
+float `atomic_add` is not available:
+
+```c
+static void atomic_add_float_global(global float *addr, float val)
+{
+    volatile global unsigned int *uaddr = (volatile global unsigned int *)addr;
+    unsigned int old = *uaddr;
+    unsigned int assumed;
+    do
+    {
+        assumed = old;
+        float next = as_float(assumed) + val;
+        old = atomic_cmpxchg(uaddr, assumed, as_uint(next));
+    }
+    while (old != assumed);
+}
+
+#bind layer src float
+#bind layer &accum float
+
+@KERNEL
+{
+    global float *data = @accum.data;
+    atomic_add_float_global(&data[0], 1.0f);
+}
+```
+
+This CAS float-add test also sampled as `4096.0` for a 64x64 source layer in
+Houdini 21.0.729. Keep atomic branches isolated and validate/cook them before
+using them in a solver; atomics can still serialize hot spots and make failures
+harder to debug. Native Histogram COP internals are a useful reference: they
+bind `#bind layer &counts int`, then use `global int *data = @counts.data;`.
+
 ### Neighborhood Sampling
 
 Use a normal layer binding and integer indices for convolution, morphology, or local statistics:
