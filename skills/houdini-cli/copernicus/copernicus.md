@@ -227,9 +227,6 @@ use the generated `.data` pointer on an `&` binding:
 }
 ```
 
-This was verified in Houdini 21.0.729 with a 64x64 source layer: the atomic
-integer counter sampled as `4096`, matching the work-item count.
-
 For float accumulation, use a compare-and-swap loop because portable native
 float `atomic_add` is not available:
 
@@ -258,11 +255,8 @@ static void atomic_add_float_global(global float *addr, float val)
 }
 ```
 
-This CAS float-add test also sampled as `4096.0` for a 64x64 source layer in
-Houdini 21.0.729. Keep atomic branches isolated and validate/cook them before
-using them in a solver; atomics can still serialize hot spots and make failures
-harder to debug. Native Histogram COP internals are a useful reference: they
-bind `#bind layer &counts int`, then use `global int *data = @counts.data;`.
+Keep atomic branches isolated and validate/cook them before using them in a
+solver; atomics can serialize hot spots and make failures harder to debug.
 
 ### Neighborhood Sampling
 
