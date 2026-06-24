@@ -1,4 +1,6 @@
 from argparse import Namespace
+from types import SimpleNamespace
+import os
 
 import pytest
 
@@ -84,6 +86,140 @@ class FakeLayer:
         return (0.0, 2.0)
 
 
+class FakeParmTemplate:
+    def __init__(self, menu_items=()) -> None:
+        self._menu_items = tuple(menu_items)
+
+    def menuItems(self):
+        return self._menu_items
+
+
+class FakeParm:
+    def __init__(self, value=None, menu_items=(), on_press=None) -> None:
+        self.value = value
+        self.set_values = []
+        self._template = FakeParmTemplate(menu_items)
+        self._on_press = on_press
+        self.pressed = False
+
+    def set(self, value):
+        self.value = value
+        self.set_values.append(value)
+
+    def eval(self):
+        return self.value
+
+    def parmTemplate(self):
+        return self._template
+
+    def pressButton(self):
+        self.pressed = True
+        if self._on_press is not None:
+            self._on_press()
+
+
+class FakeRopNode:
+    def __init__(self, parent, name) -> None:
+        self._parent = parent
+        self._name = name
+        self.destroyed = False
+        self.parms_by_name = {
+            "coppath": FakeParm(""),
+            "copoutput": FakeParm(""),
+            "colorconversion": FakeParm(0, ("ocio", "bakeocio", "raw")),
+            "mkpath": FakeParm(0),
+            "outputaovs": FakeParm(0),
+            "aov1": FakeParm("C"),
+            "useport1": FakeParm(0),
+            "port1": FakeParm(0),
+            "ociodisplay": FakeParm("Default"),
+            "ocioview": FakeParm("Default"),
+            "execute": FakeParm(on_press=self._render),
+        }
+
+    def _render(self):
+        output_path = self.parms_by_name["copoutput"].value
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "wb") as handle:
+            handle.write(b"fake image")
+
+    def path(self):
+        return f"{self._parent.path()}/{self._name}"
+
+    def parm(self, name):
+        return self.parms_by_name.get(name)
+
+    def destroy(self):
+        self.destroyed = True
+
+
+class FakeFileNode:
+    def __init__(self, parent, name) -> None:
+        self._parent = parent
+        self._name = name
+        self.display = False
+        self.render = False
+        self.parms_by_name = {
+            "filename": FakeParm(""),
+            "colorspace": FakeParm(0, ("ocio", "raw")),
+            "reload": FakeParm(),
+            "addaovs": FakeParm(),
+        }
+
+    def path(self):
+        return f"{self._parent.path()}/{self._name}"
+
+    def name(self):
+        return self._name
+
+    def parm(self, name):
+        return self.parms_by_name.get(name)
+
+    def outputNames(self):
+        return ("C",)
+
+    def outputLabels(self):
+        return ("C",)
+
+    def outputDataTypes(self):
+        return ("RGBA",)
+
+    def layer(self, output_index=0):
+        assert output_index == 0
+        return FakeLayer()
+
+    def setDisplayFlag(self, value):
+        self.display = value
+
+    def setRenderFlag(self, value):
+        self.render = value
+
+
+class FakeCopParent:
+    def __init__(self, path="/obj/cops") -> None:
+        self._path = path
+        self.created_nodes = []
+        self._children = {}
+
+    def path(self):
+        return self._path
+
+    def node(self, name):
+        return self._children.get(name)
+
+    def createNode(self, node_type, name=None):
+        node_name = name or node_type
+        if node_type == "rop_image":
+            node = FakeRopNode(self, node_name)
+        elif node_type == "file":
+            node = FakeFileNode(self, node_name)
+        else:
+            raise AssertionError(f"Unexpected node type: {node_type}")
+        self.created_nodes.append(node)
+        self._children[node_name] = node
+        return node
+
+
 class FakeConnection:
     def __init__(self, source_node, output_index=0, output_name="output1", output_label="output1"):
         self._source_node = source_node
@@ -105,12 +241,19 @@ class FakeConnection:
 
 
 class FakeCopNode:
-    def __init__(self) -> None:
+    def __init__(self, parent=None) -> None:
         self._input_connections = ()
         self._outputs = ()
+        self._parent = parent or FakeCopParent()
 
     def path(self):
         return "/obj/cops/constant1"
+
+    def name(self):
+        return "constant1"
+
+    def parent(self):
+        return self._parent
 
     def outputNames(self):
         return ("constant",)
@@ -174,9 +317,20 @@ class FakeSession:
     def __init__(self, *nodes):
         self.hou = self
         self._nodes = {node.path(): node for node in nodes}
+        self.connection = SimpleNamespace(modules=SimpleNamespace(os=os, tempfile=SimpleNamespace(gettempdir=lambda: os.getcwd())))
 
     def node(self, path):
         return self._nodes.get(path)
+
+    def getenv(self, name):
+        values = {"JOB": "", "HIP": os.getcwd()}
+        return values.get(name, "")
+
+    def expandString(self, value):
+        return value.replace("$HIP", os.getcwd())
+
+    def frame(self):
+        return 1.0
 
 
 class FakeConnect:
@@ -320,3 +474,69 @@ def test_handle_info_output_proxy_infers_upstream_output(monkeypatch) -> None:
     assert result["data"]["source_node_path"] == "/obj/cops/rasterizegeo1"
     assert result["data"]["output_index"] == 2
     assert result["data"]["output_label"] == "id"
+
+
+def test_handle_export_image_raw_writes_default_file(monkeypatch, tmp_path) -> None:
+    parent = FakeCopParent(str(tmp_path / "cops"))
+    node = FakeCopNode(parent=parent)
+    session = FakeSession(node)
+    session.getcwd = str(tmp_path)
+    monkeypatch.setattr(cop, "connect", FakeConnect(session))
+    monkeypatch.setattr(cop, "localize", lambda value: value)
+    monkeypatch.chdir(tmp_path)
+
+    result = cop.handle_export_image(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/constant1",
+            mode="raw",
+            output=None,
+            aov=None,
+            display=None,
+            view=None,
+        )
+    )
+
+    rop = parent.created_nodes[0]
+    assert result["ok"] is True
+    assert result["data"]["mode"] == "raw"
+    assert result["data"]["file"]["path"].endswith("constant1_raw_f0001.exr")
+    assert os.path.exists(result["data"]["file"]["path"])
+    assert rop.parms_by_name["colorconversion"].value == 2
+    assert rop.parms_by_name["execute"].pressed is True
+    assert rop.destroyed is True
+
+
+def test_handle_import_image_creates_file_cop(monkeypatch, tmp_path) -> None:
+    image_path = tmp_path / "tex" / "cli_images" / "edit.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"fake image")
+    parent = FakeCopParent("/obj/cops")
+    session = FakeSession(parent)
+    monkeypatch.setattr(cop, "connect", FakeConnect(session))
+    monkeypatch.setattr(cop, "localize", lambda value: value)
+    monkeypatch.chdir(tmp_path)
+
+    result = cop.handle_import_image(
+        Namespace(
+            host="localhost",
+            port=18811,
+            image_path=str(image_path),
+            parent="/obj/cops",
+            name=None,
+            colorspace="raw",
+            set_display=True,
+        )
+    )
+
+    file_node = parent.created_nodes[0]
+    assert result["ok"] is True
+    assert result["data"]["node_path"].endswith("/cli_image_edit")
+    assert result["data"]["colorspace"] == "raw"
+    assert result["data"]["file"]["parameter_value"].startswith("$HIP/")
+    assert file_node.parms_by_name["colorspace"].value == 1
+    assert file_node.parms_by_name["reload"].pressed is True
+    assert file_node.parms_by_name["addaovs"].pressed is True
+    assert file_node.display is True
+    assert file_node.render is True

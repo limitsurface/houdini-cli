@@ -15,6 +15,15 @@ Use this guidance when developing GPU-accelerated Copernicus filters, procedural
 4. **Use `#bind` and `@KERNEL`.** Do not manually author the generated kernel signature.
 5. **After editing a kernel, run `houdini-cli opencl sync <node-path>`**, then validate and check node errors before judging the output.
 
+## Inspection Guidance
+
+Prefer direct COP data inspection over viewport screenshots when debugging pixel values.
+
+- Use `houdini-cli cop info` for cooked layer metadata and `houdini-cli cop sample` for point samples.
+- For full-frame or data-buffer inspection, export a raw EXR through the CLI and analyze the file with external tools instead of printing large buffers through the CLI or agent context.
+- Raw EXR inspection examples should mention orientation explicitly: OpenCV/NumPy arrays are commonly top-origin, while comparisons to Houdini COP pixel coordinates may need Y-coordinate mapping.
+- If the user's shell Python lacks NumPy, use the `hython` executable shipped with their Houdini install. Do not assume a fixed install path, operating system layout, or Houdini version; locate the user's Houdini installation and run NumPy-based summary scripts with its bundled Python.
+
 ## Critical: Spaces and Coordinates
 
 **This section is mandatory context for every Copernicus OpenCL task. Do not write sampling, warping, shape, grid, or pixel code from memory without applying these rules.**

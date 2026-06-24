@@ -36,6 +36,19 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.cop_command == "info"
     assert args.output is None
 
+    args = parser.parse_args(["cop", "export-image", "/obj/cops/OUT", "--mode", "raw", "--aov", "C"])
+    assert args.command == "cop"
+    assert args.cop_command == "export-image"
+    assert args.mode == "raw"
+    assert args.aov == "C"
+
+    args = parser.parse_args(["cop", "import-image", "$JOB/tex/cli_images/edit.png", "--parent", "/obj/cops", "--colorspace", "ocio", "--set-display"])
+    assert args.command == "cop"
+    assert args.cop_command == "import-image"
+    assert args.image_path == "$JOB/tex/cli_images/edit.png"
+    assert args.parent == "/obj/cops"
+    assert args.set_display is True
+
     args = parser.parse_args(
         ["opencl", "sync", "/obj/cops/opencl1", "--clear", "--preserve-spare-values"]
     )

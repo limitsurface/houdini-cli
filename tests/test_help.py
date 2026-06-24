@@ -278,6 +278,7 @@ def test_handle_help_cop_group_lists_info() -> None:
     result = help_command.handle_help(Namespace(command_path=["cop"]))
 
     assert result["ok"] is True
+    assert "export-image" in result["data"]["subcommands"]
     assert "info" in result["data"]["subcommands"]
     assert "Sample" in result["data"]["subcommand_descriptions"]["sample"]
 
@@ -287,6 +288,14 @@ def test_handle_help_cop_info_topic_has_usage() -> None:
 
     assert result["ok"] is True
     assert result["data"]["usage"] == "houdini-cli cop info <node-path> [--output <index-or-name>]"
+
+
+def test_handle_help_cop_export_image_mentions_orientation() -> None:
+    result = help_command.handle_help(Namespace(command_path=["cop", "export-image"]))
+
+    assert result["ok"] is True
+    assert "--mode raw|view" in result["data"]["usage"]
+    assert any("map Y" in note for note in result["data"]["notes"])
 
 
 def test_handle_help_missing_topic_raises() -> None:
