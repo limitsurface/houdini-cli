@@ -57,6 +57,11 @@ def _resolve_output_index(node: Any, output_ref: str) -> int:
         pass
 
     output_names = list(localize(node.outputNames()))
+    output_labels = list(localize(node.outputLabels()))
+    if output_ref in output_names:
+        return output_names.index(output_ref)
+    if output_ref in output_labels:
+        return output_labels.index(output_ref)
     if output_ref not in output_names:
         raise ValueError(f"Output not found on node {localize(node.path())}: {output_ref}")
     return output_names.index(output_ref)
@@ -103,8 +108,18 @@ def _first_input_connection(node: Any) -> Any | None:
     return connections[0] if connections else None
 
 
+def _is_output_proxy_node(node: Any) -> bool:
+    try:
+        type_name = str(localize(node.type().name()))
+    except Exception:
+        return True
+    return type_name == "null"
+
+
 def _find_output_proxy_node(node: Any, output_index: int) -> Any | None:
     for child in list(node.outputs()):
+        if not _is_output_proxy_node(child):
+            continue
         try:
             input_connections = list(child.inputConnections())
         except Exception:
@@ -120,7 +135,7 @@ def _find_output_proxy_node(node: Any, output_index: int) -> Any | None:
     return None
 
 
-def _resolve_layer_target(node: Any, output_ref: str | None) -> tuple[Any, dict[str, Any]]:
+def _resolve_layer_target(node: Any, output_ref: str | None) -> tuple[Any, int, dict[str, Any]]:
     output_names = list(localize(node.outputNames()))
     if output_ref is not None or len(output_names) > 1:
         resolved_ref = output_ref if output_ref is not None else "0"
@@ -130,26 +145,26 @@ def _resolve_layer_target(node: Any, output_ref: str | None) -> tuple[Any, dict[
             **_output_identity(node, output_index),
         }
         if len(output_names) == 1 and output_index == 0:
-            return node, identity
+            return node, output_index, identity
         proxy = _find_output_proxy_node(node, output_index)
         if proxy is not None:
-            return proxy, identity
-        return node, identity
+            return proxy, 0, identity
+        return node, output_index, identity
 
     upstream = _first_input_connection(node)
-    if upstream is not None and upstream.inputNode() is not None:
+    if upstream is not None and upstream.inputNode() is not None and _is_output_proxy_node(node):
         source_node = upstream.inputNode()
         identity = {
             "source_node_path": localize(source_node.path()),
             **_connection_output_identity(upstream),
         }
-        return node, identity
+        return node, 0, identity
 
     identity = {
         "source_node_path": localize(node.path()),
         **_output_identity(node, 0),
     }
-    return node, identity
+    return node, 0, identity
 
 
 def _rect_payload(rect: Any) -> dict[str, int]:
@@ -373,8 +388,8 @@ def handle_info(args: argparse.Namespace) -> dict:
         if not hasattr(node, "layer"):
             raise ValueError(f"Node does not provide Copernicus layer data: {args.node_path}")
 
-        layer_node, identity = _resolve_layer_target(node, args.output)
-        layer = layer_node.layer()
+        layer_node, layer_index, identity = _resolve_layer_target(node, args.output)
+        layer = layer_node.layer(layer_index)
 
         return success_result(
             {
@@ -394,8 +409,8 @@ def handle_sample(args: argparse.Namespace) -> dict:
         if not hasattr(node, "layer"):
             raise ValueError(f"Node does not provide Copernicus layer data: {args.node_path}")
 
-        layer_node, identity = _resolve_layer_target(node, args.output)
-        layer = layer_node.layer()
+        layer_node, layer_index, identity = _resolve_layer_target(node, args.output)
+        layer = layer_node.layer(layer_index)
 
         return success_result(
             {
@@ -415,8 +430,8 @@ def handle_export_image(args: argparse.Namespace) -> dict:
         if not hasattr(node, "layer"):
             raise ValueError(f"Node does not provide Copernicus layer data: {args.node_path}")
 
-        layer_node, identity = _resolve_layer_target(node, args.aov)
-        layer = layer_node.layer()
+        layer_node, layer_index, identity = _resolve_layer_target(node, args.aov)
+        layer = layer_node.layer(layer_index)
         output_path = _expand_image_path(session, args.output) if args.output else _default_export_path(session, node, args.mode)
         os_mod.makedirs(os_mod.path.dirname(output_path), exist_ok=True)
 

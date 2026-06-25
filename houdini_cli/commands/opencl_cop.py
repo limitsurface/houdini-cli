@@ -244,7 +244,8 @@ def current_input_connections(opencl_node: Any) -> dict[int, dict[str, Any]]:
         result[int(connection.inputIndex())] = {
             "from_path": str(localize(source_node.path())) if source_node is not None else None,
             "from_output_index": output_index,
-            "from_output_name": str(localize(connection.outputName())),
+            "from_output_name": str(localize(connection.inputName())),
+            "from_output_label": str(localize(connection.inputLabel())),
             "source_output_type": source_output_type,
         }
     return result
@@ -340,6 +341,13 @@ def disconnect_input(opencl_node: Any, index: int) -> None:
         opencl_node.setInput(index, None, 0)
 
 
+def cop_input_types_compatible(expected_data_type: str | None, source_output_type: str | None) -> bool | None:
+    if expected_data_type is None or source_output_type is None:
+        return None
+    if source_output_type == expected_data_type:
+        return True
+    return expected_data_type == "RGBA" and source_output_type == "RGB"
+
 
 def cop_validation_summary(
     opencl_node: Any,
@@ -384,7 +392,9 @@ def cop_validation_summary(
             if not entry["optional"]:
                 missing_required_count += 1
         elif expected_data_type is not None and connected["source_output_type"] is not None:
-            compatible = connected["source_output_type"] == expected_data_type
+            compatible = bool(
+                cop_input_types_compatible(expected_data_type, connected["source_output_type"])
+            )
             if not compatible:
                 invalid_connection_count += 1
         elif connected is not None:

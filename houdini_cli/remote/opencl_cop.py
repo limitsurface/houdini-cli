@@ -124,7 +124,8 @@ def _houdini_cli_opencl_cop_validation_state(node_path):
         connections[int(connection.inputIndex())] = {
             "from_path": str(source_node.path()) if source_node is not None else None,
             "from_output_index": output_index,
-            "from_output_name": str(connection.outputName()),
+            "from_output_name": str(connection.inputName()),
+            "from_output_label": str(connection.inputLabel()),
             "source_output_type": source_output_type,
         }
 

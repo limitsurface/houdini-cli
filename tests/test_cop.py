@@ -25,14 +25,19 @@ class FakeRect:
 
 
 class FakeLayer:
+    def __init__(self, resolution=(4, 3), channels=3, value=None) -> None:
+        self._resolution = resolution
+        self._channels = channels
+        self._value = value
+
     def bufferResolution(self):
-        return (4, 3)
+        return self._resolution
 
     def dataWindow(self):
-        return FakeRect()
+        return FakeRect(width=self._resolution[0], height=self._resolution[1])
 
     def displayWindow(self):
-        return FakeRect()
+        return FakeRect(width=self._resolution[0], height=self._resolution[1])
 
     def pixelScale(self):
         return (1.0, 1.0)
@@ -41,7 +46,7 @@ class FakeLayer:
         return 1.0
 
     def channelCount(self):
-        return 3
+        return self._channels
 
     def storageType(self):
         return "imageLayerStorageType.Float32"
@@ -68,6 +73,8 @@ class FakeLayer:
         return point
 
     def bufferIndex(self, x, y):
+        if self._value is not None:
+            return self._value
         return (float(x), float(y), 1.0)
 
     def cameraPosition(self):
@@ -313,6 +320,30 @@ class FakeMultiOutputCopNode(FakeCopNode):
         return ("Mono", "Mono", "ID")
 
 
+class FakeDirectMultiOutputCopNode(FakeCopNode):
+    def __init__(self):
+        super().__init__()
+        self.layer_calls = []
+
+    def path(self):
+        return "/obj/cops/python1"
+
+    def outputNames(self):
+        return ("output1", "output2")
+
+    def outputLabels(self):
+        return ("lut", "lut_meta")
+
+    def outputDataTypes(self):
+        return ("RGB", "Mono")
+
+    def layer(self, output_index=0):
+        self.layer_calls.append(output_index)
+        if output_index == 1:
+            return FakeLayer(resolution=(1, 1), channels=1, value=17.0)
+        return FakeLayer(resolution=(289, 17), channels=3)
+
+
 class FakeSession:
     def __init__(self, *nodes):
         self.hou = self
@@ -451,6 +482,51 @@ def test_handle_info_multi_output_direct_node(monkeypatch) -> None:
     assert result["data"]["output_index"] == 1
     assert result["data"]["output_label"] == "intrinsic:depth_eye"
     assert result["data"]["output_data_type"] == "Mono"
+
+
+def test_handle_info_multi_output_without_proxy_uses_selected_layer_index(monkeypatch) -> None:
+    multi = FakeDirectMultiOutputCopNode()
+    monkeypatch.setattr(cop, "connect", FakeConnect(FakeSession(multi)))
+    monkeypatch.setattr(cop, "localize", lambda value: value)
+
+    result = cop.handle_info(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/python1",
+            output="lut_meta",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["layer_node_path"] == "/obj/cops/python1"
+    assert result["data"]["output_index"] == 1
+    assert result["data"]["output_label"] == "lut_meta"
+    assert result["data"]["resolution"]["buffer"] == [1, 1]
+    assert result["data"]["channel_count"] == 1
+    assert multi.layer_calls == [1]
+
+
+def test_handle_sample_multi_output_without_proxy_uses_selected_layer_index(monkeypatch) -> None:
+    multi = FakeDirectMultiOutputCopNode()
+    monkeypatch.setattr(cop, "connect", FakeConnect(FakeSession(multi)))
+    monkeypatch.setattr(cop, "localize", lambda value: value)
+
+    result = cop.handle_sample(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/python1",
+            output="1",
+            points=None,
+            x=0,
+            y=0,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["samples"][0]["value"] == 17.0
+    assert multi.layer_calls == [1]
 
 
 def test_handle_info_output_proxy_infers_upstream_output(monkeypatch) -> None:

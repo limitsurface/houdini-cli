@@ -200,10 +200,19 @@ class FakeSourceNode:
 
 
 class FakeConnection:
-    def __init__(self, input_index: int, source_node: FakeSourceNode, output_index: int) -> None:
+    def __init__(
+        self,
+        input_index: int,
+        source_node: FakeSourceNode,
+        output_index: int,
+        output_name: str | None = None,
+        output_label: str | None = None,
+    ) -> None:
         self._input_index = input_index
         self._source_node = source_node
         self._output_index = output_index
+        self._output_name = output_name or f"output{output_index + 1}"
+        self._output_label = output_label or self._output_name
 
     def inputIndex(self):
         return self._input_index
@@ -215,7 +224,16 @@ class FakeConnection:
         return self._output_index
 
     def outputName(self):
-        return f"output{self._output_index + 1}"
+        return f"input{self._input_index + 1}"
+
+    def outputLabel(self):
+        return f"input{self._input_index + 1}"
+
+    def inputName(self):
+        return self._output_name
+
+    def inputLabel(self):
+        return self._output_label
 
 
 class FakeTemplate:
@@ -832,6 +850,46 @@ def test_handle_validate_reports_signature_drift_and_invalid_connection(monkeypa
     assert data["inputs"][1]["expected_data_type"] == "Geometry"
     assert data["inputs"][1]["source_output_type"] == "Mono"
     assert data["inputs"][1]["compatible"] is False
+
+
+def test_handle_validate_accepts_rgb_source_for_rgba_cop_input(monkeypatch) -> None:
+    bindings = [
+        _binding(name="src", type="layer", portname="src", readable=True, optional=False, layertype="float4"),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True, layertype="float4"),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj.signature_data = {
+        "inputs": [{"input#_name": "src", "input#_type": "float4", "input#_optional": False}],
+        "outputs": [{"output#_name": "dst", "output#_type": "float4"}],
+    }
+    node_obj._parms.update(
+        {
+            "input1_name": FakeParm("src"),
+            "input1_type": FakeParm("float4"),
+            "input1_optional": FakeParm(False),
+            "output1_name": FakeParm("dst"),
+            "output1_type": FakeParm("float4"),
+        }
+    )
+    node_obj._input_data_types = ["RGBA"]
+    rgb_src = FakeSourceNode("/obj/cops/rgb_source", ["RGB"])
+    node_obj._input_connections = [
+        FakeConnection(0, rgb_src, 0, output_name="transform", output_label="transform"),
+    ]
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_validate(
+        Namespace(host="localhost", port=18811, node_path="/obj/cops/opencl1", details=True)
+    )
+
+    assert result["ok"] is True
+    data = result["data"]
+    assert data["invalid_connection_count"] == 0
+    assert data["ok"] is True
+    assert data["inputs"][0]["compatible"] is True
+    assert data["inputs"][0]["from_output_name"] == "transform"
+    assert data["inputs"][0]["from_output_label"] == "transform"
 
 
 def test_handle_validate_reports_stale_opencl_binding_rows(monkeypatch) -> None:
