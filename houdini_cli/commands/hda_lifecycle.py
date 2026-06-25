@@ -6,7 +6,7 @@ import argparse
 import os
 from typing import Any
 
-from ..format.envelopes import success_result
+from ..format.envelopes import error_result, success_result
 from ..transport.rpyc import connect, localize
 from .hda_common import definition_for_node, definition_summary, save_definition
 from .hda_sections import tool_xml
@@ -83,11 +83,27 @@ def _apply_creation_metadata(definition: Any, args: argparse.Namespace) -> None:
         definition.setIcon(args.icon)
 
 
+def _apply_source_interface(definition: Any, asset: Any) -> None:
+    definition.setParmTemplateGroup(asset.parmTemplateGroup())
+
+
+def _post_package_validation(session: Any, asset: Any, args: argparse.Namespace) -> dict | None:
+    if args.no_validate:
+        return None
+    try:
+        result = validate_asset(session, asset, fresh=True, cook=True, frames=[])
+        result.setdefault("ok", True)
+        return result
+    except Exception as exc:
+        return {"ok": False, "error": error_result(exc)["error"]}
+
+
 def handle_create(args: argparse.Namespace) -> dict:
     node_path = _create_asset_phase(args)
     with connect(args.host, args.port) as session:
         asset = _created_asset(session, node_path, args.type_name)
         definition = definition_for_node(asset)
+        _apply_source_interface(definition, asset)
         _apply_creation_metadata(definition, args)
         save_definition(definition)
         return success_result(
@@ -100,6 +116,7 @@ def handle_package(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         asset = _created_asset(session, node_path, args.type_name)
         definition = definition_for_node(asset)
+        _apply_source_interface(definition, asset)
         _apply_creation_metadata(definition, args)
         if args.tab_submenu:
             category = localize(asset.type().category().name())
@@ -113,11 +130,7 @@ def handle_package(args: argparse.Namespace) -> dict:
             definition.setExtraFileOption("OnCreated/IsPython", True)
         save_definition(definition)
         asset.matchCurrentDefinition()
-        validation = (
-            None
-            if args.no_validate
-            else validate_asset(session, asset, fresh=True, cook=True, frames=[])
-        )
+        validation = _post_package_validation(session, asset, args)
         return success_result(
             {
                 "node": node_summary(asset),
