@@ -217,6 +217,14 @@ they may be wired directly together rather than exposing a typical
 user-authored processing network between them. Inspect their internal networks
 and dedicated documentation before modifying their solver structure.
 
+### COP HDA Packaging IO
+
+Copernicus/COP `subnet` nodes are created with a canonical top-level
+`inputs -> outputs` pair, which becomes the HDA boundary on conversion.
+
+When packaging a COP chain into an HDA, wire the effect through those existing
+nodes rather than creating a second top-level `input`/`output` pair.
+
 ## Common Patterns
 
 ### Atomic Accumulation
