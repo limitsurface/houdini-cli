@@ -33,7 +33,8 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 ## VEX
 
 - Treat the local Houdini VEX reference as the source of truth. Do not infer function names or signatures from C, C++, GLSL, or other syntactically similar languages.
-- Before using a VEX function, verify that it exists in `help_prepared/vex/functions/<function>.txt`.
+- Before using a VEX function, verify that it exists in `help_prepared/vex/functions/<function>.txt`, resolved relative to this skill root.
+- Do not use older or separate `references/functions/` trees as the source of truth when working with this Houdini CLI skill; they may be incomplete or generated from a different corpus.
 - Check the documented `#context`, exact `:usage:` signatures, return type, overloads, and any geometry-handle or attribute-class constraints.
 - Use `help_prepared/vex/contexts/` when context behavior or available globals are unclear.
 - To discover functions by purpose, search descriptions and tags with `rg -i "<keyword>" help_prepared/vex/functions`.
