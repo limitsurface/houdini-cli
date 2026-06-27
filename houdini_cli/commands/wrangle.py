@@ -35,7 +35,7 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         help="Wrangle execution class (default: point).",
     )
     source = create_parser.add_mutually_exclusive_group()
-    source.add_argument("--vex", help="Inline VEX snippet.")
+    source.add_argument("--vex", help="Inline VEX snippet, or '-' to read from stdin.")
     source.add_argument("--input", help="UTF-8 VEX file path or '-' to read from stdin.")
     create_parser.add_argument(
         "--create-spare-parms",
@@ -66,6 +66,8 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
 
 def _snippet_source(args: argparse.Namespace) -> str | None:
     if args.vex is not None:
+        if args.vex == "-":
+            return read_text_input("-")
         return args.vex
     if args.input is not None:
         return read_text_input(args.input)

@@ -32,10 +32,12 @@ NODE_TOPIC = {'description': 'Inspect nodes, connections, errors, and apply stru
                       'usage': "houdini-cli node set <node-path> --section parms|inputs|full --json <payload-or-'-'>",
                       'notes': ['Use --section parms to batch multiple parameter edits on one node instead of '
                                 'repeating parm set.',
-                                'For --section inputs, pass a JSON array of connection rows with '
-                                'from/from_index/to_index fields.',
+                                'For --section inputs, pass a bare JSON array of connection rows, not an object '
+                                'wrapper such as {"inputs": [...]}. Each row uses from/from_index/to_index fields.',
                                 'Use named COP output/input ports when numeric indices are ambiguous.'],
-                      'examples': ['uv run houdini-cli node set /obj/copnet/opencl1 --section inputs --json '
+                      'examples': ['uv run houdini-cli node set /obj/geo1/null1 --section inputs --json '
+                                   '"[{\\"from\\":\\"/obj/geo1/box1\\",\\"from_index\\":0,\\"to_index\\":0}]"',
+                                   'uv run houdini-cli node set /obj/copnet/opencl1 --section inputs --json '
                                    '"[{\\"from\\":\\"/obj/copnet/src\\",\\"from_index\\":\\"output1\\",\\"to_index\\":\\"input1\\"}]"',
                                    'Get-Content inputs.json | uv run houdini-cli node set /obj/copnet/opencl1 '
                                    '--section inputs --json -',

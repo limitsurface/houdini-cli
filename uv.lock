@@ -27,7 +27,7 @@ wheels = [
 
 [[package]]
 name = "houdini-cli"
-version = "0.1.11"
+version = "0.1.12"
 source = { editable = "." }
 dependencies = [
     { name = "rpyc" },
