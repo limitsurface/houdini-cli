@@ -143,7 +143,7 @@ def control_rows(node: Any, bindings: list[Any]) -> list[dict[str, Any]]:
         if control is not None and link is not None:
             try:
                 raw = str(localize(link.rawValue()))
-                linked = any(token in raw for token in (f'"./{name}"', f"'./{name}'", f'"{name}"', f"'{name}'"))
+                linked = any(token in raw for token in (f'"./{name}', f"'./{name}", f'"{name}"', f"'{name}'"))
             except Exception:
                 linked = False
         rows.append({"binding": base, "type": kind, "control": name, "generated": name in generated if name else False, "missing": control is None, "linked": linked})

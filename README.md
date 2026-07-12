@@ -17,7 +17,7 @@ The CLI is built for structured scene interaction from agents and scripts. Curre
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
 - OpenCL binding/signature validation and sync: `opencl`
-- Python COP binding/signature inspection, validation, and safe sync: `python`
+- Python COP and Python Snippet SOP binding inspection, validation, and safe sync: `python`
 - Attribute Wrangle creation and spare-parameter synchronization: `wrangle`
 - node type discovery: `nodetype`
 - built-in structured help: `help`
@@ -169,6 +169,8 @@ houdini-cli python sync /obj/copnet1/python1 --prune-generated
 
 Python COP sync preserves compatible spare values and expressions, retains custom
 control folder placement, and reconnects inputs by port name after rebuilding.
+The same commands support Python Snippet SOP binding rows and controls; classic
+Python SOPs are intentionally excluded because they do not use the `#bind` model.
 
 Capture a viewport screenshot:
 
