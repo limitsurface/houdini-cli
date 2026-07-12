@@ -16,9 +16,9 @@ def get_node(session: Any, node_path: str) -> Any:
 
 def node_connector_count(node: Any, *, output: bool) -> int:
     method_names = (
-        ("outputConnectors", "outputNames", "outputs")
+        ("outputNames", "outputConnectors", "outputs")
         if output
-        else ("inputConnectors", "inputNames", "inputs")
+        else ("inputNames", "inputConnectors", "inputs")
     )
     for method_name in method_names:
         method = getattr(node, method_name, None)

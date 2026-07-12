@@ -17,6 +17,7 @@ from .commands import node
 from .commands import nodetype
 from .commands import opencl
 from .commands import parm
+from .commands import python_node
 from .commands import recipe
 from .commands import shelf
 from .commands import session
@@ -49,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     hda.register_parser(subparsers)
     cop.register_parser(subparsers)
     opencl.register_parser(subparsers)
+    python_node.register_parser(subparsers)
     attrib.register_parser(subparsers)
     nodetype.register_parser(subparsers)
     recipe.register_parser(subparsers)

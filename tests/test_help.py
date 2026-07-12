@@ -11,7 +11,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "recipe", "session", "shelf", "wrangle"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "python", "recipe", "session", "shelf", "wrangle"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
@@ -255,6 +255,14 @@ def test_handle_help_opencl_sync_topic_has_examples() -> None:
     assert result["ok"] is True
     assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--no-preserve-spare-values] [--details]"
     assert any("--bindings-only" in example for example in result["data"]["examples"])
+
+
+def test_handle_help_python_sync_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["python", "sync"]))
+
+    assert result["ok"] is True
+    assert "--dry-run" in result["data"]["usage"]
+    assert "--prune-generated" in result["data"]["usage"]
 
 
 def test_handle_help_reference_audit_topics_include_new_flags() -> None:

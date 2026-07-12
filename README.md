@@ -17,6 +17,7 @@ The CLI is built for structured scene interaction from agents and scripts. Curre
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
 - OpenCL binding/signature validation and sync: `opencl`
+- Python COP binding/signature inspection, validation, and safe sync: `python`
 - Attribute Wrangle creation and spare-parameter synchronization: `wrangle`
 - node type discovery: `nodetype`
 - built-in structured help: `help`
@@ -157,6 +158,17 @@ houdini-cli opencl sync /obj/geo1/work_here/opencl1
 houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only
 houdini-cli opencl sync /obj/geo1/work_here/opencl1 --disconnect-invalid
 ```
+
+Inspect and safely synchronize a Python COP from its `#bind` directives:
+
+```powershell
+houdini-cli python inspect /obj/copnet1/python1 --details
+houdini-cli python sync /obj/copnet1/python1 --dry-run --details
+houdini-cli python sync /obj/copnet1/python1 --prune-generated
+```
+
+Python COP sync preserves compatible spare values and expressions, retains custom
+control folder placement, and reconnects inputs by port name after rebuilding.
 
 Capture a viewport screenshot:
 

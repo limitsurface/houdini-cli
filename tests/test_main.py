@@ -67,6 +67,12 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "opencl"
     assert args.opencl_command == "validate"
 
+    args = parser.parse_args(["python", "sync", "/obj/cops/python1", "--dry-run"])
+    assert args.command == "python"
+    assert args.python_command == "sync"
+    assert args.dry_run is True
+    assert args.preserve_values is True
+
     args = parser.parse_args(
         [
             "wrangle",

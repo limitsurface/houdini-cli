@@ -13,6 +13,7 @@ from .opencl import OPENCL_TOPIC
 from .attrib import ATTRIB_TOPIC
 from .nodetype import NODETYPE_TOPIC
 from .recipe import RECIPE_TOPIC
+from .python import PYTHON_TOPIC
 
 HELP_TREE = {
     "ping": PING_TOPIC,
@@ -28,4 +29,5 @@ HELP_TREE = {
     "attrib": ATTRIB_TOPIC,
     "nodetype": NODETYPE_TOPIC,
     "recipe": RECIPE_TOPIC,
+    "python": PYTHON_TOPIC,
 }

@@ -127,6 +127,10 @@ def _topic_payload(command_path: list[str]) -> dict:
                     "command": "houdini-cli opencl validate <node-path>",
                 },
                 {
+                    "task": "Safely synchronize a Python COP from #bind directives",
+                    "command": "houdini-cli python sync <node-path> --dry-run",
+                },
+                {
                     "task": "Inspect explicit node wiring",
                     "command": "houdini-cli node connections <node-path>",
                 },
