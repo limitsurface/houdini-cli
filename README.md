@@ -228,7 +228,8 @@ Sample cooked COP output:
 houdini-cli cop sample /obj/fixes_here/copnet1/opencl1 --x 128 --y 128
 ```
 
-Create an Attribute Wrangle and generate spare parameters from its VEX:
+Create a SOP Attribute Wrangle and generate spare parameters from its VEX (the
+default kind remains `sop`):
 
 ```powershell
 houdini-cli wrangle create /obj/work_here `
@@ -237,6 +238,10 @@ houdini-cli wrangle create /obj/work_here `
   --input grid.vfl `
   --create-spare-parms
 ```
+
+LOP and DOP wrangles use the same command with `--kind lop`, `--kind
+dop-geometry`, `--kind dop-pop`, or `--kind dop-gas-field`. Their specialized
+parameters remain available through the regular `parm` commands.
 
 Synchronize channel-call parameters on an existing wrangle:
 

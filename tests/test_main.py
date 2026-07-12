@@ -90,7 +90,11 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.command == "wrangle"
     assert args.wrangle_command == "create"
     assert args.run_over == "detail"
+    assert args.kind == "sop"
     assert args.create_spare_parms is True
+
+    args = parser.parse_args(["wrangle", "create", "/stage", "--kind", "lop"])
+    assert args.kind == "lop"
 
     args = parser.parse_args(["wrangle", "spare-parms", "sync", "/obj/geo1/grid", "--clear"])
     assert args.wrangle_spare_parms_command == "sync"

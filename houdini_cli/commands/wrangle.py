@@ -12,14 +12,28 @@ from .node_common import get_node, node_summary
 
 _RUN_OVER_CHOICES = ("detail", "primitive", "point", "vertex", "number")
 _GROUP_TYPE_CHOICES = ("guess", "point", "primitive", "vertex")
+_WRANGLE_KINDS = {
+    "sop": ("Sop", "attribwrangle"),
+    "lop": ("Lop", "attribwrangle"),
+    "dop-geometry": ("Dop", "geometrywrangle"),
+    "dop-pop": ("Dop", "popwrangle"),
+    "dop-gas-field": ("Dop", "gasfieldwrangle"),
+}
+_SUPPORTED_WRANGLES = {(category, node_type) for category, node_type in _WRANGLE_KINDS.values()}
 
 
 def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("wrangle", help="Create and configure VEX wrangles.")
     wrangle_subparsers = parser.add_subparsers(dest="wrangle_command", required=True)
 
-    create_parser = wrangle_subparsers.add_parser("create", help="Create an Attribute Wrangle SOP.")
-    create_parser.add_argument("parent_path", help="Parent SOP network path.")
+    create_parser = wrangle_subparsers.add_parser("create", help="Create a SOP, LOP, or DOP VEX wrangle.")
+    create_parser.add_argument("parent_path", help="Parent network path.")
+    create_parser.add_argument(
+        "--kind",
+        choices=tuple(_WRANGLE_KINDS),
+        default="sop",
+        help="Wrangle kind (default: sop).",
+    )
     create_parser.add_argument("--name", help="Optional node name.")
     create_parser.add_argument("--group", default="", help="Optional element group.")
     create_parser.add_argument(
@@ -74,10 +88,19 @@ def _snippet_source(args: argparse.Namespace) -> str | None:
     return None
 
 
-def _wrangle_parms(node: Any) -> tuple[Any, Any, Any]:
+def _snippet_parm(node: Any) -> Any:
+    node_type = node.type()
+    identity = (localize(node_type.category().name()), localize(node_type.name()))
+    snippet = node.parm("snippet")
+    if identity not in _SUPPORTED_WRANGLES or snippet is None:
+        raise ValueError(f"Node is not a supported VEX wrangle: {localize(node.path())}")
+    return snippet
+
+
+def _sop_wrangle_parms(node: Any) -> tuple[Any, Any, Any]:
     group = node.parm("group")
     run_over = node.parm("class")
-    snippet = node.parm("snippet")
+    snippet = _snippet_parm(node)
     if group is None or run_over is None or snippet is None:
         raise ValueError(f"Node is not a supported VEX wrangle: {localize(node.path())}")
     return group, run_over, snippet
@@ -92,7 +115,7 @@ def _spare_parm_names(node: Any) -> list[str]:
 
 
 def _create_spare_parms(session: Any, node: Any, *, clear: bool) -> dict[str, Any]:
-    _wrangle_parms(node)
+    _snippet_parm(node)
     before = _spare_parm_names(node)
     if clear:
         node.removeSpareParms()
@@ -113,11 +136,26 @@ def handle_create(args: argparse.Namespace) -> dict:
 
     with connect(args.host, args.port) as session:
         parent = get_node(session, args.parent_path)
-        node = parent.createNode("attribwrangle", args.name) if args.name else parent.createNode("attribwrangle")
-        group, run_over, snippet = _wrangle_parms(node)
-        group.set(args.group)
-        node.parm("grouptype").set(args.group_type)
-        run_over.set(args.run_over)
+        expected_category, node_type = _WRANGLE_KINDS[args.kind]
+        actual_category = localize(parent.childTypeCategory().name())
+        if actual_category != expected_category:
+            raise ValueError(
+                f"Wrangle kind {args.kind!r} requires a {expected_category} network; "
+                f"{localize(parent.path())} contains {actual_category} nodes"
+            )
+        node = parent.createNode(node_type, args.name) if args.name else parent.createNode(node_type)
+        snippet = _snippet_parm(node)
+        sop_details: dict[str, Any] = {}
+        if args.kind == "sop":
+            group, run_over, snippet = _sop_wrangle_parms(node)
+            group.set(args.group)
+            node.parm("grouptype").set(args.group_type)
+            run_over.set(args.run_over)
+            sop_details = {
+                "group": args.group,
+                "group_type": args.group_type,
+                "run_over": args.run_over,
+            }
         if snippet_text is not None:
             snippet.set(snippet_text)
 
@@ -128,9 +166,8 @@ def handle_create(args: argparse.Namespace) -> dict:
         return success_result(
             {
                 **node_summary(node),
-                "group": args.group,
-                "group_type": args.group_type,
-                "run_over": args.run_over,
+                "kind": args.kind,
+                **sop_details,
                 "snippet_set": snippet_text is not None,
                 "spare_parms": spare_parms,
             }
@@ -151,7 +188,7 @@ def handle_spare_parms_sync(args: argparse.Namespace) -> dict:
 def handle_spare_parms_clear(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = get_node(session, args.node_path)
-        _wrangle_parms(node)
+        _snippet_parm(node)
         removed = _spare_parm_names(node)
         node.removeSpareParms()
         return success_result(
