@@ -170,7 +170,7 @@ def apply_dop_signature(
     bindings: list[Any],
     *,
     clear: bool,
-    preserve_spare_values: bool = False,
+    preserve_spare_values: bool = True,
 ) -> dict[str, Any]:
     if clear:
         opencl_node.setParms({"paramcount": 0})

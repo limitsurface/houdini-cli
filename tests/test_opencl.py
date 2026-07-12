@@ -93,6 +93,22 @@ class FakeOpenclNode:
         return self._group.copy()
 
     def setParmTemplateGroup(self, group):
+        generated_folder_names = {"opencl_sync_controls", "folder_generatedparms_kernelcode"}
+
+        def generated_parm_names(template_group):
+            return {
+                child.name()
+                for entry in template_group.entries()
+                if entry.name() in generated_folder_names and hasattr(entry, "parmTemplates")
+                for child in entry.parmTemplates()
+            }
+
+        old_names = generated_parm_names(self._group)
+        new_names = generated_parm_names(group)
+        for name in old_names - new_names:
+            self._parms.pop(name, None)
+        for name in new_names - old_names:
+            self._parms[name] = FakeParm(0.0)
         self._group = group.copy()
 
     def parmsAsData(self, brief=False):
@@ -456,6 +472,12 @@ def test_handle_sync_can_preserve_generated_spare_expression(monkeypatch) -> Non
         _binding(name="gain", type="float", portname="gain", fval=0.125, defval=True),
     ]
     node_obj = FakeOpenclNode()
+    generated_folder = FakeFolderParmTemplate(
+        "folder_generatedparms_kernelcode",
+        "Generated Channel Parameters",
+    )
+    generated_folder.addParmTemplate(FakeTemplate("gain", "Gain", "Float"))
+    node_obj._group = FakeParmTemplateGroup([generated_folder])
     node_obj._parms["gain"] = FakeParm(0.125)
     node_obj._parms["gain"].setExpression('ch("../hda_gain")')
     monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
@@ -468,7 +490,6 @@ def test_handle_sync_can_preserve_generated_spare_expression(monkeypatch) -> Non
             node_path="/obj/cops/opencl1",
             clear=False,
             bindings_only=False,
-            preserve_spare_values=True,
         )
     )
 
@@ -971,6 +992,21 @@ def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:
         _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
     ]
     node_obj = FakeOpenclNode()
+    node_obj.signature_data["inputs"] = [
+        {"input#_name": "src", "input#_type": "floatn", "input#_optional": False},
+        {"input#_name": "geo", "input#_type": "geo", "input#_optional": False},
+    ]
+    node_obj._parms.update(
+        {
+            "inputs": FakeParm(2),
+            "input1_name": FakeParm("src"),
+            "input1_type": FakeParm("floatn"),
+            "input1_optional": FakeParm(False),
+            "input2_name": FakeParm("geo"),
+            "input2_type": FakeParm("geo"),
+            "input2_optional": FakeParm(False),
+        }
+    )
     mono_src = FakeSourceNode("/obj/cops/light_alpha", ["Mono"])
     node_obj._input_connections = [
         FakeConnection(0, mono_src, 0),
@@ -997,6 +1033,60 @@ def test_handle_sync_can_disconnect_invalid_inputs(monkeypatch) -> None:
     assert data["disconnected_inputs"] == [1]
     assert data["validation"]["invalid_connection_count"] == 0
     assert data["validation"]["inputs"][1]["connected"] is False
+
+
+def test_handle_sync_restores_reordered_cop_inputs_by_name(monkeypatch) -> None:
+    bindings = [
+        _binding(name="base", type="layer", portname="base", readable=True, optional=True),
+        _binding(name="dynamic_tail", type="layer", portname="dynamic_tail", readable=True, optional=True),
+        _binding(name="hdr_lut", type="layer", portname="hdr_lut", readable=True, optional=True),
+        _binding(name="dst", type="layer", portname="dst", readable=False, writeable=True),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj.signature_data["inputs"] = [
+        {"input#_name": "base", "input#_type": "floatn", "input#_optional": True},
+        {"input#_name": "hdr_lut", "input#_type": "floatn", "input#_optional": True},
+    ]
+    node_obj._parms.update(
+        {
+            "inputs": FakeParm(2),
+            "input1_name": FakeParm("base"),
+            "input1_type": FakeParm("floatn"),
+            "input1_optional": FakeParm(True),
+            "input2_name": FakeParm("hdr_lut"),
+            "input2_type": FakeParm("floatn"),
+            "input2_optional": FakeParm(True),
+        }
+    )
+    base_source = FakeSourceNode("/obj/cops/base_source", ["Mono"])
+    hdr_source = FakeSourceNode("/obj/cops/hdr_source", ["Mono"])
+    node_obj._input_connections = [
+        FakeConnection(0, base_source, 0),
+        FakeConnection(1, hdr_source, 0),
+    ]
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=True,
+            bindings_only=False,
+            disconnect_invalid=False,
+            details=True,
+        )
+    )
+
+    connections = {connection.inputIndex(): connection.inputNode().path() for connection in node_obj.inputConnections()}
+    assert connections == {0: "/obj/cops/base_source", 2: "/obj/cops/hdr_source"}
+    assert result["data"]["restored_connections"] == [
+        {"name": "base", "from_path": "/obj/cops/base_source", "from_output_index": 0, "to_input_index": 0},
+        {"name": "hdr_lut", "from_path": "/obj/cops/hdr_source", "from_output_index": 0, "to_input_index": 2},
+    ]
+    assert result["data"]["dropped_connections"] == []
+    assert result["data"]["validation"]["signature_matches_kernel"] is True
 
 
 def test_handle_validate_compact_response_keeps_binding_names(monkeypatch) -> None:

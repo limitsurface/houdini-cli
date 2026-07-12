@@ -12,7 +12,7 @@ OPENCL_TOPIC = {'description': 'Synchronize OpenCL node bindings and generated s
               'sync': {'description': 'Refresh an OpenCL node from #bind directives using COP signatures, SOP '
                                       'bindings, or Gas OpenCL DOP parameters.',
                        'usage': 'houdini-cli opencl sync <node-path> [--clear] [--bindings-only] '
-                                '[--disconnect-invalid] [--preserve-spare-values] [--details]',
+                                '[--disconnect-invalid] [--no-preserve-spare-values] [--details]',
                        'examples': ['uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1',
                                     'uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --bindings-only',
                                     'uv run houdini-cli opencl sync /obj/geo1/work_here/opencl1 --clear',

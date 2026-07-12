@@ -164,10 +164,6 @@ def existing_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[s
     return result
 
 
-def signature_key(entry: dict[str, Any]) -> tuple[str, str]:
-    return (str(entry["name"]), str(entry["type"]))
-
-
 def validation_output_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
@@ -177,35 +173,6 @@ def validation_output_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]
         }
         for entry in entries
     ]
-
-
-def preserve_signature_order(existing: list[dict[str, Any]], desired: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not existing or not desired:
-        return desired
-
-    remaining: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    desired_order: list[tuple[str, str]] = []
-    for entry in desired:
-        key = signature_key(entry)
-        remaining.setdefault(key, []).append(entry)
-        desired_order.append(key)
-
-    preserved: list[dict[str, Any]] = []
-    for entry in existing:
-        key = signature_key(entry)
-        bucket = remaining.get(key)
-        if bucket:
-            preserved.append(bucket.pop(0))
-            if not bucket:
-                remaining.pop(key, None)
-
-    for key in desired_order:
-        bucket = remaining.get(key)
-        if bucket:
-            preserved.extend(bucket)
-            remaining.pop(key, None)
-
-    return preserved
 
 
 def summary_signature_entries(opencl_node: Any, *, output: bool) -> list[dict[str, Any]]:
@@ -249,6 +216,67 @@ def current_input_connections(opencl_node: Any) -> dict[int, dict[str, Any]]:
             "source_output_type": source_output_type,
         }
     return result
+
+
+def capture_named_input_connections(opencl_node: Any) -> list[dict[str, Any]]:
+    entries = existing_signature_entries(opencl_node, output=False)
+    captured: list[dict[str, Any]] = []
+    try:
+        connections = list(opencl_node.inputConnections())
+    except Exception:
+        return captured
+    for connection in connections:
+        index = int(connection.inputIndex())
+        if not 0 <= index < len(entries):
+            continue
+        source_node = connection.inputNode()
+        if source_node is None:
+            continue
+        captured.append(
+            {
+                "name": str(entries[index]["name"]),
+                "from_path": str(localize(source_node.path())),
+                "from_output_index": int(connection.outputIndex()),
+                "source_node": source_node,
+            }
+        )
+    return captured
+
+
+def restore_named_input_connections(
+    opencl_node: Any,
+    input_entries: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    indices_by_name: dict[str, list[int]] = {}
+    for index, entry in enumerate(input_entries):
+        indices_by_name.setdefault(str(entry["name"]), []).append(index)
+
+    for index in list(current_input_connections(opencl_node)):
+        disconnect_input(opencl_node, index)
+
+    restored: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    used_by_name: dict[str, int] = {}
+    for connection in connections:
+        name = str(connection["name"])
+        occurrence = used_by_name.get(name, 0)
+        used_by_name[name] = occurrence + 1
+        indices = indices_by_name.get(name, [])
+        source_node = connection["source_node"]
+        if occurrence >= len(indices) or source_node is None:
+            dropped.append({key: value for key, value in connection.items() if key != "source_node"})
+            continue
+        input_index = indices[occurrence]
+        output_index = int(connection["from_output_index"])
+        opencl_node.setInput(input_index, source_node, output_index)
+        restored.append(
+            {
+                **{key: value for key, value in connection.items() if key != "source_node"},
+                "to_input_index": input_index,
+            }
+        )
+    return restored, dropped
 
 
 def parm_expression(parm: Any) -> str | None:
@@ -483,20 +511,11 @@ def apply_cop_signature(
     *,
     clear: bool,
     bindings_only: bool,
-    preserve_spare_values: bool = False,
+    preserve_spare_values: bool = True,
 ) -> dict[str, Any]:
     input_entries = port_signature_entries(bindings, output=False)
     output_entries = port_signature_entries(bindings, output=True)
-
-    if not bindings_only and not clear:
-        input_entries = preserve_signature_order(
-            existing_signature_entries(opencl_node, output=False),
-            input_entries,
-        )
-        output_entries = preserve_signature_order(
-            existing_signature_entries(opencl_node, output=True),
-            output_entries,
-        )
+    input_connections = capture_named_input_connections(opencl_node) if not bindings_only else []
 
     if clear:
         if bindings_only:
@@ -513,8 +532,15 @@ def apply_cop_signature(
     )
 
     sync_bindings(opencl_node, spare_bindings)
+    restored_connections: list[dict[str, Any]] = []
+    dropped_connections: list[dict[str, Any]] = []
     if not bindings_only:
         sync_signature(opencl_node, input_entries, output_entries)
+        restored_connections, dropped_connections = restore_named_input_connections(
+            opencl_node,
+            input_entries,
+            input_connections,
+        )
 
     return {
         "inputs": (
@@ -528,4 +554,6 @@ def apply_cop_signature(
             else [{"name": entry["name"], "type": entry["type"]} for entry in output_entries]
         ),
         "spare_parms": spare_parms,
+        "restored_connections": restored_connections,
+        "dropped_connections": dropped_connections,
     }

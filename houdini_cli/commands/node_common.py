@@ -14,6 +14,23 @@ def get_node(session: Any, node_path: str) -> Any:
     return node
 
 
+def node_connector_count(node: Any, *, output: bool) -> int:
+    method_names = (
+        ("outputConnectors", "outputNames", "outputs")
+        if output
+        else ("inputConnectors", "inputNames", "inputs")
+    )
+    for method_name in method_names:
+        method = getattr(node, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            return len(method())
+        except Exception:
+            continue
+    return 0
+
+
 def node_summary(node: Any) -> dict:
     summary = {
         "path": localize(node.path()),
@@ -21,8 +38,8 @@ def node_summary(node: Any) -> dict:
         "type": localize(node.type().name()),
         "category": localize(node.type().category().name()),
         "child_count": len(node.children()),
-        "input_count": len([inp for inp in node.inputs() if inp is not None]),
-        "output_count": len(node.outputs()),
+        "input_count": node_connector_count(node, output=False),
+        "output_count": node_connector_count(node, output=True),
     }
 
     if hasattr(node, "isDisplayFlagSet"):

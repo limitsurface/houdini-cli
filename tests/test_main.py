@@ -58,6 +58,11 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.disconnect_invalid is False
     assert args.preserve_spare_values is True
 
+    args = parser.parse_args(
+        ["opencl", "sync", "/obj/cops/opencl1", "--no-preserve-spare-values"]
+    )
+    assert args.preserve_spare_values is False
+
     args = parser.parse_args(["opencl", "validate", "/obj/cops/opencl1"])
     assert args.command == "opencl"
     assert args.opencl_command == "validate"

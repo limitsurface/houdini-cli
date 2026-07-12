@@ -39,6 +39,8 @@ class FakeNode:
         self._children = []
         self._parms = []
         self._input_connections = []
+        self._input_connectors = []
+        self._output_connectors = []
 
     def path(self):
         return self._path
@@ -72,6 +74,12 @@ class FakeNode:
 
     def outputs(self):
         return []
+
+    def inputConnectors(self):
+        return tuple(self._input_connectors)
+
+    def outputConnectors(self):
+        return tuple(self._output_connectors)
 
     def isDisplayFlagSet(self):
         return self.display
@@ -198,6 +206,8 @@ def _patch_localize(monkeypatch) -> None:
 
 def test_handle_get(monkeypatch) -> None:
     fake = FakeNode()
+    fake._input_connectors = [()]
+    fake._output_connectors = [(), (), ()]
     _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
     _patch_localize(monkeypatch)
 
@@ -207,6 +217,8 @@ def test_handle_get(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["data"]["path"] == "/obj/test"
     assert result["data"]["type"] == "null"
+    assert result["data"]["input_count"] == 1
+    assert result["data"]["output_count"] == 3
 
 
 def test_handle_create(monkeypatch) -> None:

@@ -63,8 +63,9 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     )
     sync_parser.add_argument(
         "--preserve-spare-values",
-        action="store_true",
-        help="Restore existing generated spare parameter values or expressions after rebuilding them.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Preserve existing generated spare parameter values and expressions (enabled by default).",
     )
     sync_parser.add_argument(
         "--details",
@@ -82,7 +83,7 @@ def _apply_signature(
     *,
     clear: bool,
     bindings_only: bool,
-    preserve_spare_values: bool = False,
+    preserve_spare_values: bool = True,
 ) -> dict[str, Any]:
     context = opencl_context(opencl_node)
     if context == "dop":
@@ -149,7 +150,7 @@ def handle_sync(args: argparse.Namespace) -> dict:
             bindings,
             clear=args.clear,
             bindings_only=args.bindings_only,
-            preserve_spare_values=getattr(args, "preserve_spare_values", False),
+            preserve_spare_values=getattr(args, "preserve_spare_values", True),
         )
         if runover:
             runover_parm = opencl_node.parm("runover") or opencl_node.parm("options_runover")
@@ -171,12 +172,15 @@ def handle_sync(args: argparse.Namespace) -> dict:
             **compact_validation(validation, bindings),
             "bindings_only": bool(args.bindings_only),
             "disconnect_invalid": bool(getattr(args, "disconnect_invalid", False)),
-            "preserve_spare_values": bool(getattr(args, "preserve_spare_values", False)),
+            "preserve_spare_values": bool(getattr(args, "preserve_spare_values", True)),
             "disconnected_inputs": disconnected_inputs,
             "spare_parms": summary["spare_parms"],
             "inputs": summary["inputs"],
             "outputs": summary["outputs"],
         }
+        if "restored_connections" in summary:
+            data["restored_connections"] = summary["restored_connections"]
+            data["dropped_connections"] = summary["dropped_connections"]
         if getattr(args, "details", False):
             data["validation"] = validation
         return success_result(data)

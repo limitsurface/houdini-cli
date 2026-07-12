@@ -253,7 +253,7 @@ def test_handle_help_opencl_sync_topic_has_examples() -> None:
     result = help_command.handle_help(Namespace(command_path=["opencl", "sync"]))
 
     assert result["ok"] is True
-    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--preserve-spare-values] [--details]"
+    assert result["data"]["usage"] == "houdini-cli opencl sync <node-path> [--clear] [--bindings-only] [--disconnect-invalid] [--no-preserve-spare-values] [--details]"
     assert any("--bindings-only" in example for example in result["data"]["examples"])
 
 
