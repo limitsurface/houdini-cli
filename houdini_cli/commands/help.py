@@ -10,7 +10,7 @@ HELP_RULES = [
     "stdout is JSON",
     "prefer structured commands before eval",
     "prefer stdin for complex JSON payloads",
-    "prefer node find before broad node list traversal in large networks",
+    "prefer node summary, then node find, before broad node list traversal in large networks",
 ]
 
 HELP_NOTES = [
@@ -133,6 +133,18 @@ def _topic_payload(command_path: list[str]) -> dict:
                 {
                     "task": "Inspect explicit node wiring",
                     "command": "houdini-cli node connections <node-path>",
+                },
+                {
+                    "task": "Survey a large network without returning node rows",
+                    "command": "houdini-cli node summary <root-path>",
+                },
+                {
+                    "task": "Trace only upstream graph dependencies",
+                    "command": "houdini-cli node neighbors <node-path> --direction upstream",
+                },
+                {
+                    "task": "Summarize a composed Solaris stage",
+                    "command": "houdini-cli lop info <node-path>",
                 },
                 {
                     "task": "Capture a viewport screenshot",

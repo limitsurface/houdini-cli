@@ -84,6 +84,24 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
         action="store_true",
         help="For references, return only dependencies outside the inspected root.",
     )
+    get_parser.add_argument(
+        "--parm",
+        dest="parm_names",
+        action="append",
+        help="Project one exact parameter or tuple name; repeat to preserve a requested order.",
+    )
+    get_parser.add_argument(
+        "--max-items",
+        type=int,
+        default=10,
+        help="Maximum nested summary items per projected parameter (default: 10).",
+    )
+    get_parser.add_argument(
+        "--structured-value",
+        choices=("full", "summary"),
+        default="full",
+        help="Return full or bounded-summary values for --parm projections.",
+    )
     get_parser.set_defaults(handler=handle_get)
 
     errors_parser = node_subparsers.add_parser("errors", help="Get errors, warnings, and messages for nodes.")

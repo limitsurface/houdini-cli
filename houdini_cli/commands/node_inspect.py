@@ -6,9 +6,11 @@ import argparse
 from typing import Any
 
 from ..format.envelopes import success_result
+from ..remote.node_parms import NODE_PARMS_REMOTE
 from ..transport.rpyc import connect, localize
 from ..util.jsonio import load_json_input
 from .node_common import get_node, node_summary
+from .node_parm_values import parm_projection_item
 from .node_references import reference_payload_in_houdini as _reference_payload_in_houdini
 
 
@@ -24,7 +26,65 @@ def _parse_bool(value: str) -> bool:
 def handle_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         node = get_node(session, args.node_path)
+        requested_parms = getattr(args, "parm_names", None) or []
+        if requested_parms and args.section != "parms":
+            raise ValueError("--parm requires --section parms")
         if args.section == "parms":
+            structured_value = getattr(args, "structured_value", "full")
+            max_items = getattr(args, "max_items", 10)
+            if max_items < 1:
+                raise ValueError("max items must be at least one")
+            if structured_value == "summary" and not requested_parms:
+                raise ValueError("--structured-value summary requires at least one --parm")
+            if requested_parms:
+                connection = getattr(session, "connection", None)
+                if connection is not None:
+                    projected = localize(
+                        NODE_PARMS_REMOTE.evaluate(
+                            connection,
+                            "project",
+                            args.node_path,
+                            requested_parms,
+                            structured_value,
+                            int(max_items),
+                        )
+                    )
+                    items = projected["items"]
+                    missing = projected["missing"]
+                else:
+                    items = []
+                    missing = []
+                    for name in requested_parms:
+                        parm = node.parm(name)
+                        if parm is None:
+                            parm_tuple = node.parmTuple(name)
+                            if parm_tuple is not None and len(parm_tuple):
+                                parm = parm_tuple[0]
+                        if parm is None:
+                            missing.append(name)
+                            continue
+                        items.append(
+                            parm_projection_item(
+                                parm,
+                                mode=structured_value,
+                                max_items=max_items,
+                                display_name=name,
+                            )
+                        )
+                return success_result(
+                    {
+                        "node_path": args.node_path,
+                        "section": "parms",
+                        "items": items,
+                    },
+                    meta={
+                        "missing": missing,
+                        "requested": len(requested_parms),
+                        "returned": len(items),
+                        "max_items": max_items,
+                        "structured_value": structured_value,
+                    },
+                )
             return success_result(
                 {
                     "node_path": args.node_path,

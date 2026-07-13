@@ -377,6 +377,37 @@ def test_handle_get_section_parms(monkeypatch) -> None:
     assert result["data"]["value"] == {"brief": False, "parms": True}
 
 
+def test_handle_get_projects_exact_parms_in_caller_order(monkeypatch) -> None:
+    fake = FakeNode()
+    first = object()
+    second = object()
+    fake.parm = lambda name: {"engine": first, "picture": second}.get(name)
+    fake.parmTuple = lambda _name: None
+    _patch_connect(monkeypatch, FakeConnect(FakeSession({"/obj/test": fake})))
+    _patch_localize(monkeypatch)
+    monkeypatch.setattr(
+        node_inspect,
+        "parm_projection_item",
+        lambda parm, **kwargs: {"p": kwargs["display_name"], "v": "first" if parm is first else "second"},
+    )
+
+    result = node.handle_get(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/test",
+            section="parms",
+            parm_names=["picture", "missing", "engine"],
+            structured_value="summary",
+            max_items=4,
+        )
+    )
+
+    assert [item["p"] for item in result["data"]["items"]] == ["picture", "engine"]
+    assert result["meta"]["missing"] == ["missing"]
+    assert result["meta"]["max_items"] == 4
+
+
 def test_handle_get_section_inputs(monkeypatch) -> None:
     fake = FakeNode()
     fake.inputsAsData = lambda: [{"from": "a", "to_index": 0}]

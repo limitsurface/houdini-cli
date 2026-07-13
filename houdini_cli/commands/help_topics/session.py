@@ -19,16 +19,17 @@ SESSION_TOPIC = {'description': 'Inspect or control session-level state such as 
                             'usage': 'houdini-cli session selection [--include-hidden]',
                             'notes': ["the last path in `paths` is also returned as `current` and matches Houdini's "
                                       'global current node']},
-              'screenshot': {'description': 'Capture a screenshot from a specific Scene Viewer pane.',
+              'screenshot': {'description': 'Capture a screenshot and report the Scene Viewer context it represents.',
                              'usage': 'houdini-cli session screenshot [--pane-name <name> | --index <n>] [--output '
                                       '<path>] [--frame <n>] [--width <px>] [--height <px>]',
                              'examples': ['uv run houdini-cli session screenshot --pane-name panetab1',
                                           'uv run houdini-cli session screenshot --index 0 --output '
                                           "'$HIP/houdini_cli/screenshots/view.png'"],
                              'notes': ['requires graphical Houdini UI',
+                                       'viewer metadata is best-effort and never changes pane state',
                                        'when multiple Scene Viewers are active, use --pane-name or --index']},
               'viewport': {'description': 'Read or manipulate the active viewport in a Scene Viewer pane.',
-                           'children': {'get': {'description': 'Read viewport type and current free-camera state.',
+                           'children': {'get': {'description': 'Read viewport type, free-camera state, and displayed network context.',
                                                 'usage': 'houdini-cli session viewport get [--pane-name <name> | '
                                                          '--index <n>]'},
                                         'focus-selected': {'description': 'Frame the current Scene Viewer selection, '

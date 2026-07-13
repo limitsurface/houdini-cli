@@ -16,6 +16,7 @@ The CLI is built for structured scene interaction from agents and scripts. Curre
 - shelf discovery and shelf tool CRUD: `shelf`
 - attribute inspection: `attrib`
 - cooked COP sampling: `cop`
+- composed Solaris/USD stage summaries: `lop`
 - OpenCL binding/signature validation and sync: `opencl`
 - Python COP and Python Snippet SOP binding inspection, validation, and safe sync: `python`
 - Attribute Wrangle creation and spare-parameter synchronization: `wrangle`
@@ -131,6 +132,25 @@ houdini-cli node get /obj/geo1/null1 --section inputs
 houdini-cli node get /obj/geo1/null1 --section references --external-only
 ```
 
+Survey and trace a large network without dumping every node or parameter:
+
+```powershell
+houdini-cli node summary /obj/asset --max-depth 1 --top-types 20
+houdini-cli node find /obj/asset --type attribwrangle --max-results 40
+houdini-cli node neighbors /obj/asset/OUT --direction upstream --depth 4
+houdini-cli node parms list /stage/karmarendersettings --non-default --value-mode summary
+houdini-cli node get /stage/karmarendersettings --section parms --parm engine --parm picture
+```
+
+Summarize the composed USD stage at a LOP output. Stage acquisition may cook;
+the response reports cook counts, acquisition/traversal timings, traversal
+bounds, and whether returned counts are complete.
+
+```powershell
+houdini-cli lop info /stage/karmarendersettings
+houdini-cli lop info /stage/karmarendersettings --include-paths --max-prims 20000
+```
+
 Rename, copy, or reparent nodes:
 
 ```powershell
@@ -177,7 +197,12 @@ Capture a viewport screenshot:
 ```powershell
 houdini-cli session screenshot --pane-name panetab1
 houdini-cli session screenshot --index 0 --output "$HIP/houdini_cli/screenshots/view.png"
+houdini-cli session viewport get
 ```
+
+Screenshot and viewport responses include best-effort viewer context such as the
+current network, display node, state, camera, and view type without changing the
+viewer.
 
 Frame the current selection in the viewport and switch to an axis view:
 
@@ -259,5 +284,6 @@ Search shelf tools and edit a shelf script:
 ```powershell
 houdini-cli shelf find --query houCLI
 houdini-cli shelf tools scy_Pipe
+houdini-cli shelf tool get houCLI
 houdini-cli shelf tool edit houCLI --input tool.py
 ```

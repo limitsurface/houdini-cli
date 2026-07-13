@@ -18,9 +18,12 @@ NODE_TOPIC = {'description': 'Inspect nodes, connections, errors, and apply stru
               'delete': {'description': 'Delete a node.', 'usage': 'houdini-cli node delete <node-path>'},
               'get': {'description': 'Read a focused node summary or a structured node section.',
                       'usage': 'houdini-cli node get <node-path> [--section parms|inputs|references|full] '
-                               '[--external-only]',
+                               '[--external-only] [--parm NAME ...] [--max-items N] '
+                               '[--structured-value full|summary]',
                       'examples': ['uv run houdini-cli node get /obj/cli_attrib_live/OUT --section inputs'],
-                      'notes': ['references reports parameter dependency targets and explicit input connections',
+                      'notes': ['repeat --parm with --section parms for exact, caller-ordered projection',
+                                '--structured-value summary bounds ramps, strings, tuples, and other nested values',
+                                'references reports parameter dependency targets and explicit input connections',
                                 '--external-only applies to the references section and filters dependencies outside '
                                 'the inspected root']},
               'errors': {'description': 'Read errors, warnings, and messages from one or more nodes.',
@@ -52,9 +55,14 @@ NODE_TOPIC = {'description': 'Inspect nodes, connections, errors, and apply stru
                                              'notes': ['Compress controls expanded or compact node presentation, '
                                                        'including COP live previews']}}},
               'list': {'description': 'List nodes under a root path in a compact row format with bounded traversal.',
-                       'usage': 'houdini-cli node list <root-path> [--max-depth N] [--max-nodes N]',
+                       'usage': 'houdini-cli node list <root-path> [--max-depth N] [--max-nodes N] [--count-only]',
                        'notes': ['Prefer node find first in large networks; list is best for shallow local traversal.',
                                  'See `help` root legends.node_rows for compact field meanings.']},
+              'summary': {'description': 'Aggregate network counts and type/category histograms without returning one row per node.',
+                          'usage': 'houdini-cli node summary <root-path> [--max-depth N] [--max-nodes N] '
+                                   '[--top-types N] [--include-boundaries]',
+                          'notes': ['Use this before broad node lists in large production networks.',
+                                    'Boundary lists are structural, bounded, and opt-in.']},
               'find': {'description': 'Search for nodes by type, category, or partial name using the same compact row '
                                       'format as list.',
                        'usage': 'houdini-cli node find <root-path> [--type TYPE] [--category CATEGORY] [--name TEXT] '
@@ -64,18 +72,21 @@ NODE_TOPIC = {'description': 'Inspect nodes, connections, errors, and apply stru
               'parms': {'description': 'Discover parameters on one node.',
                         'children': {'list': {'description': 'List parameters on one node in a compact row format.',
                                               'usage': 'houdini-cli node parms list <node-path> [--non-default] '
-                                                       '[--max-parms N]',
+                                                       '[--name TEXT] [--template-type TYPE] [--max-parms N] '
+                                                       '[--value-mode none|scalar|summary]',
                                               'notes': ['See `help` root legends.node_parm_rows for compact field '
                                                         'meanings.']},
                                      'find': {'description': 'Search parameters on one node in the same compact row '
                                                              'format.',
                                               'usage': 'houdini-cli node parms find <node-path> [--name TEXT] [--type '
-                                                       'TYPE] [--non-default] [--max-parms N]',
+                                                       'TYPE] [--non-default] [--max-parms N] '
+                                                       '[--value-mode none|scalar|summary]',
                                               'notes': ['See `help` root legends.node_parm_rows for compact field '
                                                         'meanings.']}}},
               'neighbors': {'description': 'Inspect local graph neighbors for one node with compact node and edge '
                                            'tables.',
-                            'usage': 'houdini-cli node neighbors <node-path> [--depth N] [--max-nodes N]',
+                            'usage': 'houdini-cli node neighbors <node-path> '
+                                     '[--direction both|upstream|downstream] [--depth N] [--max-nodes N]',
                             'notes': ['See `help` root legends.node_neighbors for compact field meanings.']},
               'nav': {'description': 'Navigate a Network Editor to one or more nodes.',
                       'usage': 'houdini-cli node nav <node-path> [<node-path> ...] [--no-frame] [--no-select] '

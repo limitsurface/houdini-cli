@@ -158,6 +158,27 @@ def test_handle_tool_add(monkeypatch) -> None:
     assert pipe.tools()[-1].name() == "new_tool"
 
 
+def test_handle_tool_get_returns_complete_script(monkeypatch) -> None:
+    fake_shelves, _, _, _, tool_b = _fixture()
+    tool_b.setScript("line_one = 1\nprint(line_one)\n")
+    monkeypatch.setattr(shelf, "connect", FakeConnect(FakeSession(fake_shelves)))
+    monkeypatch.setattr(shelf, "localize", lambda value: value)
+
+    result = shelf.handle_tool_get(
+        Namespace(host="localhost", port=18811, tool_name="print_selected_node_name_test")
+    )
+
+    assert result["data"] == {
+        "tool": {
+            "n": "print_selected_node_name_test",
+            "l": "printSelNode",
+            "shelves": ["scy_Pipe"],
+        },
+        "script": "line_one = 1\nprint(line_one)\n",
+        "script_length": 29,
+    }
+
+
 def test_handle_tool_edit(monkeypatch) -> None:
     fake_shelves, pipe, other, _, tool_b = _fixture()
     monkeypatch.setattr(shelf, "connect", FakeConnect(FakeSession(fake_shelves)))

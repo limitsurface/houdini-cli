@@ -134,8 +134,15 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
 
     list_parser = parms_subparsers.add_parser("list", help="List parameters on one node.")
     list_parser.add_argument("node_path", help="Node path to inspect.")
+    list_parser.add_argument("--name", help="Case-insensitive partial parm name match.")
+    list_parser.add_argument("--template-type", dest="parm_type", help="Exact parm template type match.")
     list_parser.add_argument("--non-default", action="store_true", help="Only include non-default parameters.")
     list_parser.add_argument("--max-parms", type=int, default=100, help="Maximum parameters to return.")
+    list_parser.add_argument(
+        "--value-mode",
+        choices=("none", "scalar", "summary"),
+        help="Opt into metadata-only, scalar-only, or bounded-summary values.",
+    )
     list_parser.add_argument(
         "--full-values",
         action="store_true",
@@ -151,9 +158,14 @@ def register_node_parms_parser(node_subparsers: argparse._SubParsersAction[argpa
     find_parser = parms_subparsers.add_parser("find", help="Search parameters on one node.")
     find_parser.add_argument("node_path", help="Node path to inspect.")
     find_parser.add_argument("--name", help="Case-insensitive partial parm name match.")
-    find_parser.add_argument("--type", dest="parm_type", help="Exact parm template type match.")
+    find_parser.add_argument("--type", "--template-type", dest="parm_type", help="Exact parm template type match.")
     find_parser.add_argument("--non-default", action="store_true", help="Only include non-default parameters.")
     find_parser.add_argument("--max-parms", type=int, default=100, help="Maximum parameters to return.")
+    find_parser.add_argument(
+        "--value-mode",
+        choices=("none", "scalar", "summary"),
+        help="Opt into metadata-only, scalar-only, or bounded-summary values.",
+    )
     find_parser.add_argument(
         "--full-values",
         action="store_true",

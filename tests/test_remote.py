@@ -77,6 +77,22 @@ def test_node_parms_remote_builds_registered_rows_call() -> None:
     )
 
 
+def test_node_parms_remote_builds_bounded_rows_call() -> None:
+    assert NODE_PARMS_REMOTE.call(
+        "bounded_rows", "/obj/geo1/test", None, "Ramp", False, "summary", 20, 10
+    ) == (
+        "_houdini_cli_bounded_parm_rows('/obj/geo1/test', None, 'Ramp', False, 'summary', 20, 10)"
+    )
+
+
+def test_node_parms_remote_builds_projection_call() -> None:
+    assert NODE_PARMS_REMOTE.call(
+        "project", "/stage/render", ["engine", "picture"], "summary", 5
+    ) == (
+        "_houdini_cli_project_parms('/stage/render', ['engine', 'picture'], 'summary', 5)"
+    )
+
+
 def test_parm_template_remote_builds_registered_default_call() -> None:
     assert PARM_TEMPLATE_REMOTE.call("set_definition_default", "/obj/geo1/hda1/scale", 0.75) == (
         "_houdini_cli_set_definition_default('/obj/geo1/hda1/scale', 0.75)"

@@ -74,6 +74,12 @@ class FakeNode:
     def path(self):
         return self._path
 
+    def displayNode(self):
+        return self
+
+    def childTypeCategory(self):
+        return SimpleNamespace(name=lambda: "Sop")
+
 
 class FakeSession:
     def __init__(self, hou_obj: FakeHou) -> None:
@@ -108,6 +114,8 @@ class FakePane:
         self._type = pane_type
         self._current = current
         self._viewport = viewport or FakeViewport()
+        self._pwd = FakeNode("/obj/geo1")
+        self._current_node = FakeNode("/obj/geo1/OUT")
 
     def name(self):
         return self._name
@@ -117,6 +125,18 @@ class FakePane:
 
     def curViewport(self):
         return self._viewport
+
+    def pwd(self):
+        return self._pwd
+
+    def currentNode(self):
+        return self._current_node
+
+    def currentState(self):
+        return "sopview"
+
+    def viewerType(self):
+        return "stateViewerType.Scene"
 
 
 class FakeRotationMatrix:
@@ -180,6 +200,9 @@ class FakeViewport:
 
     def defaultCamera(self):
         return self._camera
+
+    def camera(self):
+        return None
 
     def frameSelected(self):
         self.frame_selected_calls += 1
@@ -359,6 +382,9 @@ def test_handle_screenshot_uses_single_scene_viewer(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["data"]["pane_name"] == "panetab1"
     assert result["data"]["path"] == expected_path
+    assert result["data"]["viewer"]["current_network"] == "/obj/geo1"
+    assert result["data"]["viewer"]["display_node"] == "/obj/geo1"
+    assert result["data"]["viewer"]["camera"] is None
     assert fake_session.connection.modules.husd.assetutils.calls[0]["sceneviewer"] is pane
 
 
@@ -434,17 +460,18 @@ def test_handle_viewport_get_reads_viewport_state(monkeypatch) -> None:
         Namespace(host="localhost", port=18811, pane_name=None, index=None)
     )
 
-    assert result == {
-        "ok": True,
-        "data": {
-            "pane_name": "panetab1",
-            "viewport_name": "persp1",
-            "viewport_type": "Perspective",
-            "is_perspective": True,
-            "translation": [1.0, 2.0, 3.0],
-            "pivot": [4.0, 5.0, 6.0],
-            "rotation": [7.0, 8.0, 9.0],
-        },
+    assert result["data"]["pane_name"] == "panetab1"
+    assert result["data"]["viewport_name"] == "persp1"
+    assert result["data"]["translation"] == [1.0, 2.0, 3.0]
+    assert result["data"]["viewer"] == {
+        "current_network": "/obj/geo1",
+        "pwd": "/obj/geo1",
+        "display_node": "/obj/geo1",
+        "category": "Sop",
+        "current_node": "/obj/geo1/OUT",
+        "current_state": "sopview",
+        "view_type": "perspective",
+        "camera": None,
     }
 
 

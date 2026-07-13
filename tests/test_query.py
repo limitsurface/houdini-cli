@@ -71,6 +71,14 @@ class FakeNode:
             connections.append(FakeConnection(source, self, 0, index))
         return connections
 
+    def outputConnections(self):
+        connections = []
+        for output_index, dest in enumerate(self._outputs):
+            for input_index, source in enumerate(dest._inputs):
+                if source is self:
+                    connections.append(FakeConnection(self, dest, output_index, input_index))
+        return connections
+
     def parms(self):
         return self._parms
 
@@ -82,6 +90,12 @@ class FakeNode:
 
     def isBypassed(self):
         return False
+
+    def errors(self):
+        return ()
+
+    def warnings(self):
+        return ()
 
 
 class FakeSession:
@@ -233,6 +247,7 @@ def test_handle_neighbors(monkeypatch) -> None:
     )
     assert result["ok"] is True
     assert result["data"]["root"] == "/obj/null1"
+    assert result["data"]["direction"] == "both"
     assert result["data"]["nodes"]["cols"] == ["id", "p", "t", "f"]
     assert result["data"]["nodes"]["rows"] == [
         [0, "null1", "null", ""],
@@ -240,3 +255,144 @@ def test_handle_neighbors(monkeypatch) -> None:
     ]
     assert result["data"]["edges"]["cols"] == ["src", "out", "dst", "in"]
     assert result["data"]["edges"]["rows"] == [[1, 0, 0, 0]]
+
+
+def test_handle_neighbors_respects_direction(monkeypatch) -> None:
+    root, a, b = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    upstream = query.handle_neighbors(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=b.path(),
+            direction="upstream",
+            depth=2,
+            max_nodes=50,
+        )
+    )
+    downstream = query.handle_neighbors(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=a.path(),
+            direction="downstream",
+            depth=2,
+            max_nodes=50,
+        )
+    )
+    no_upstream = query.handle_neighbors(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=a.path(),
+            direction="upstream",
+            depth=2,
+            max_nodes=50,
+        )
+    )
+
+    assert [row[1] for row in upstream["data"]["nodes"]["rows"]] == ["null1", "box1"]
+    assert [row[1] for row in downstream["data"]["nodes"]["rows"]] == ["box1", "null1"]
+    assert [row[1] for row in no_upstream["data"]["nodes"]["rows"]] == ["box1"]
+
+
+def test_handle_neighbors_cycles_and_truncation_are_bounded(monkeypatch) -> None:
+    root = FakeNode("/obj", node_type="objnet", category="Manager")
+    a = FakeNode("/obj/a", node_type="null")
+    b = FakeNode("/obj/b", node_type="null")
+    c = FakeNode("/obj/c", node_type="null")
+    root._children = [a, b, c]
+    a._inputs = [c]
+    a._outputs = [b]
+    b._inputs = [a]
+    b._outputs = [c]
+    c._inputs = [b]
+    c._outputs = [a]
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_neighbors(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path=a.path(),
+            direction="both",
+            depth=10,
+            max_nodes=2,
+        )
+    )
+
+    assert len(result["data"]["nodes"]["rows"]) == 2
+    assert result["meta"]["truncated"] is True
+    assert len({row[1] for row in result["data"]["nodes"]["rows"]}) == 2
+
+
+def test_handle_list_count_only(monkeypatch) -> None:
+    root, _, _ = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_list(
+        Namespace(
+            host="localhost",
+            port=18811,
+            root_path="/obj",
+            max_depth=1,
+            max_nodes=50,
+            count_only=True,
+        )
+    )
+
+    assert result["data"] == {"root": "/obj", "count": 2}
+    assert "rows" not in result["data"]
+
+
+def test_handle_summary_aggregates_without_node_dump(monkeypatch) -> None:
+    root, _, _ = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            root_path="/obj",
+            max_depth=1,
+            max_nodes=100,
+            top_types=1,
+            include_boundaries=False,
+        )
+    )
+
+    assert result["data"]["counts"]["nodes"] == 2
+    assert result["data"]["type_histogram"] == [{"type": "box", "count": 1}]
+    assert result["data"]["type_histogram_other"] == 1
+    assert result["data"]["category_histogram"] == [{"category": "Sop", "count": 2}]
+    assert "rows" not in result["data"]
+    assert "boundaries" not in result["data"]
+
+
+def test_handle_summary_reports_structural_boundaries(monkeypatch) -> None:
+    root, _, _ = _make_tree()
+    monkeypatch.setattr(query, "connect", FakeConnect(FakeSession(root)))
+    monkeypatch.setattr(query, "localize", lambda value: value)
+
+    result = query.handle_summary(
+        Namespace(
+            host="localhost",
+            port=18811,
+            root_path="/obj",
+            max_depth=1,
+            max_nodes=100,
+            top_types=20,
+            include_boundaries=True,
+        )
+    )
+
+    boundaries = result["data"]["boundaries"]
+    assert boundaries["entry_nodes"]["rows"] == [["box1", "box"]]
+    assert boundaries["terminal_nodes"]["rows"] == [["null1", "null"]]
+    assert boundaries["branch_nodes"]["count"] == 0
+    assert boundaries["fan_in_nodes"]["count"] == 0

@@ -80,6 +80,10 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     tool_parser = shelf_subparsers.add_parser("tool", help="Create, edit, or delete shelf tools.")
     tool_subparsers = tool_parser.add_subparsers(dest="shelf_tool_command", required=True)
 
+    get_parser = tool_subparsers.add_parser("get", help="Read an existing shelf tool and its script.")
+    get_parser.add_argument("tool_name", help="Tool internal name.")
+    get_parser.set_defaults(handler=handle_tool_get)
+
     add_parser = tool_subparsers.add_parser("add", help="Add a new tool to a shelf.")
     add_parser.add_argument("shelf_name", help="Shelf internal name.")
     add_parser.add_argument("tool_name", help="Tool internal name.")
@@ -243,6 +247,23 @@ def handle_tool_add(args: argparse.Namespace) -> dict:
             {
                 "created": True,
                 "tool": {"n": localize(tool.name()), "l": localize(tool.label()), "s": localize(shelf.name())},
+            }
+        )
+
+
+def handle_tool_get(args: argparse.Namespace) -> dict:
+    with connect(args.host, args.port) as session:
+        tool = _get_tool(session, args.tool_name)
+        script = localize(tool.script())
+        return success_result(
+            {
+                "tool": {
+                    "n": localize(tool.name()),
+                    "l": localize(tool.label()),
+                    "shelves": _find_tool_shelves(session, args.tool_name),
+                },
+                "script": script,
+                "script_length": len(script),
             }
         )
 

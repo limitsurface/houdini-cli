@@ -335,9 +335,61 @@ def _viewport_camera_payload(viewer, viewport) -> dict:
     }
 
 
+def _viewer_context_payload(viewer, viewport) -> tuple[dict, list[str]]:
+    payload: dict = {}
+    warnings: list[str] = []
+
+    def read(field, callback, *, include_none=True):
+        try:
+            value = callback()
+        except Exception as exc:
+            warnings.append(f"{field}: {exc}")
+            return None
+        if value is not None or include_none:
+            payload[field] = value
+        return value
+
+    pwd = None
+    if hasattr(viewer, "pwd"):
+        try:
+            pwd = viewer.pwd()
+        except Exception as exc:
+            warnings.append(f"pwd: {exc}")
+        if pwd is not None:
+            path = read("current_network", lambda: localize(pwd.path()))
+            payload["pwd"] = path
+            if hasattr(pwd, "displayNode"):
+                read(
+                    "display_node",
+                    lambda: localize(pwd.displayNode().path()) if pwd.displayNode() is not None else None,
+                )
+            if hasattr(pwd, "childTypeCategory"):
+                read(
+                    "category",
+                    lambda: localize(pwd.childTypeCategory().name()) if pwd.childTypeCategory() is not None else None,
+                )
+
+    if hasattr(viewer, "currentNode"):
+        read(
+            "current_node",
+            lambda: localize(viewer.currentNode().path()) if viewer.currentNode() is not None else None,
+        )
+    if hasattr(viewer, "currentState"):
+        read("current_state", lambda: localize(viewer.currentState()))
+    read("view_type", lambda: _viewport_type_name(viewport).lower())
+    if hasattr(viewport, "camera"):
+        read(
+            "camera",
+            lambda: localize(viewport.camera().path()) if viewport.camera() is not None else None,
+        )
+    return payload, warnings
+
+
 def handle_screenshot(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         viewer = _resolve_scene_viewer(session, pane_name=args.pane_name, index=args.index)
+        viewport = viewer.curViewport()
+        viewer_context, viewer_warnings = _viewer_context_payload(viewer, viewport)
         pane_name = localize(viewer.name())
         output_path = _resolve_output_path(session, args.output, pane_name)
         assetutils = session.connection.modules.husd.assetutils
@@ -359,14 +411,19 @@ def handle_screenshot(args: argparse.Namespace) -> dict:
                 "width": int(args.width),
                 "height": int(args.height),
                 "bytes": size,
-            }
+                "viewer": viewer_context,
+            },
+            meta={"warnings": viewer_warnings} if viewer_warnings else None,
         )
 
 
 def handle_viewport_get(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         viewer, viewport = _resolve_viewport(session, pane_name=args.pane_name, index=args.index)
-        return success_result(_viewport_camera_payload(viewer, viewport))
+        payload = _viewport_camera_payload(viewer, viewport)
+        context, warnings = _viewer_context_payload(viewer, viewport)
+        payload["viewer"] = context
+        return success_result(payload, meta={"warnings": warnings} if warnings else None)
 
 
 def handle_viewport_focus_selected(args: argparse.Namespace) -> dict:

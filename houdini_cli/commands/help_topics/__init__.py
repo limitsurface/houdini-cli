@@ -14,6 +14,7 @@ from .attrib import ATTRIB_TOPIC
 from .nodetype import NODETYPE_TOPIC
 from .recipe import RECIPE_TOPIC
 from .python import PYTHON_TOPIC
+from .lop import LOP_TOPIC
 
 HELP_TREE = {
     "ping": PING_TOPIC,
@@ -30,4 +31,5 @@ HELP_TREE = {
     "nodetype": NODETYPE_TOPIC,
     "recipe": RECIPE_TOPIC,
     "python": PYTHON_TOPIC,
+    "lop": LOP_TOPIC,
 }

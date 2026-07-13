@@ -13,6 +13,7 @@ from .commands import cop
 from .commands import eval as eval_command
 from .commands import help as help_command
 from .commands import hda
+from .commands import lop
 from .commands import node
 from .commands import nodetype
 from .commands import opencl
@@ -48,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     shelf.register_parser(subparsers)
     node.register_parser(subparsers)
     hda.register_parser(subparsers)
+    lop.register_parser(subparsers)
     cop.register_parser(subparsers)
     opencl.register_parser(subparsers)
     python_node.register_parser(subparsers)

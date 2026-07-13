@@ -164,16 +164,48 @@ def test_build_parser_registers_new_command_groups() -> None:
     assert args.shelf_tool_command == "delete"
     assert args.shelf_name == "scy_Pipe"
 
+    args = parser.parse_args(["shelf", "tool", "get", "print_selected_node_name_test"])
+    assert args.shelf_tool_command == "get"
+
     args = parser.parse_args(["node", "parms", "find", "/obj/geo1", "--name", "dist"])
     assert args.command == "node"
     assert args.node_command == "parms"
     assert args.node_parms_command == "find"
     assert args.name == "dist"
 
-    args = parser.parse_args(["node", "neighbors", "/obj/geo1/null1", "--depth", "2"])
+    args = parser.parse_args(
+        ["node", "parms", "list", "/obj/geo1", "--name", "scale", "--template-type", "Float3", "--value-mode", "summary"]
+    )
+    assert args.name == "scale"
+    assert args.parm_type == "Float3"
+    assert args.value_mode == "summary"
+
+    args = parser.parse_args(
+        ["node", "neighbors", "/obj/geo1/null1", "--direction", "upstream", "--depth", "2"]
+    )
     assert args.command == "node"
     assert args.node_command == "neighbors"
     assert args.depth == 2
+    assert args.direction == "upstream"
+
+    args = parser.parse_args(["node", "list", "/obj/geo1", "--count-only"])
+    assert args.count_only is True
+
+    args = parser.parse_args(["node", "summary", "/obj/geo1", "--top-types", "10", "--include-boundaries"])
+    assert args.node_command == "summary"
+    assert args.top_types == 10
+    assert args.include_boundaries is True
+
+    args = parser.parse_args(
+        ["lop", "info", "/stage/karmarendersettings", "--output", "1", "--max-depth", "4", "--max-prims", "5000", "--top-types", "12", "--include-paths"]
+    )
+    assert args.command == "lop"
+    assert args.lop_command == "info"
+    assert args.output == 1
+    assert args.max_depth == 4
+    assert args.max_prims == 5000
+    assert args.top_types == 12
+    assert args.include_paths is True
 
     args = parser.parse_args(["node", "rename", "/obj/geo1/old", "new", "--unique"])
     assert args.node_command == "rename"
@@ -189,6 +221,13 @@ def test_build_parser_registers_new_command_groups() -> None:
     args = parser.parse_args(["node", "get", "/obj/geo1", "--section", "references", "--external-only"])
     assert args.section == "references"
     assert args.external_only is True
+
+    args = parser.parse_args(
+        ["node", "get", "/stage/karmarendersettings", "--section", "parms", "--parm", "engine", "--parm", "picture", "--structured-value", "summary", "--max-items", "5"]
+    )
+    assert args.parm_names == ["engine", "picture"]
+    assert args.structured_value == "summary"
+    assert args.max_items == 5
 
     args = parser.parse_args(["node", "flags", "set", "/obj/geo1/a", "--compress", "false"])
     assert args.node_command == "flags"

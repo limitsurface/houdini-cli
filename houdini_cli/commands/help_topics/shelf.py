@@ -6,8 +6,10 @@ SHELF_TOPIC = {'description': 'Inspect shelves, search shelf tools, and create o
                         'usage': 'houdini-cli shelf tools <shelf-name>'},
               'find': {'description': 'Search shelves and shelf tools by case-insensitive text.',
                        'usage': 'houdini-cli shelf find --query <text>'},
-              'tool': {'description': 'Create, edit, or delete shelf tools.',
-                       'children': {'add': {'description': 'Add a new Python shelf tool to one shelf from stdin or a '
+              'tool': {'description': 'Read, create, edit, or delete shelf tools.',
+                       'children': {'get': {'description': 'Read an existing shelf tool, including its complete script.',
+                                            'usage': 'houdini-cli shelf tool get <tool-name>'},
+                                    'add': {'description': 'Add a new Python shelf tool to one shelf from stdin or a '
                                                            'file.',
                                             'usage': 'houdini-cli shelf tool add <shelf-name> <tool-name> --label '
                                                      "<label> --input <path-or-'-'>"},

@@ -11,7 +11,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "node", "nodetype", "opencl", "parm", "ping", "python", "recipe", "session", "shelf", "wrangle"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "lop", "node", "nodetype", "opencl", "parm", "ping", "python", "recipe", "session", "shelf", "wrangle"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
@@ -69,7 +69,7 @@ def test_handle_help_node_group_lists_updated_subcommands() -> None:
     result = help_command.handle_help(Namespace(command_path=["node"]))
 
     assert result["ok"] is True
-    assert "summary" not in result["data"]["subcommands"]
+    assert "summary" in result["data"]["subcommands"]
     assert "find" in result["data"]["subcommands"]
     assert "neighbors" in result["data"]["subcommands"]
     assert "parms" in result["data"]["subcommands"]
@@ -78,6 +78,21 @@ def test_handle_help_node_group_lists_updated_subcommands() -> None:
     assert "rename" in result["data"]["subcommands"]
     assert "flags" in result["data"]["subcommands"]
     assert "compact row format" in result["data"]["subcommand_descriptions"]["find"]
+
+
+def test_handle_help_node_summary_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["node", "summary"]))
+
+    assert result["ok"] is True
+    assert "--include-boundaries" in result["data"]["usage"]
+
+
+def test_handle_help_lop_info_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["lop", "info"]))
+
+    assert result["ok"] is True
+    assert "--max-prims" in result["data"]["usage"]
+    assert "cook counts" in result["data"]["notes"][0]
 
 
 def test_handle_help_parm_full_topic() -> None:
@@ -189,6 +204,13 @@ def test_handle_help_shelf_tool_delete_topic() -> None:
 
     assert result["ok"] is True
     assert result["data"]["usage"] == "houdini-cli shelf tool delete <tool-name> [--shelf <shelf-name>]"
+
+
+def test_handle_help_shelf_tool_get_topic() -> None:
+    result = help_command.handle_help(Namespace(command_path=["shelf", "tool", "get"]))
+
+    assert result["ok"] is True
+    assert result["data"]["usage"] == "houdini-cli shelf tool get <tool-name>"
 
 
 def test_handle_help_node_list_topic_mentions_compact_schema() -> None:

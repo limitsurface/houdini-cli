@@ -496,6 +496,68 @@ def test_node_parms_truncates_long_strings_unless_requested(monkeypatch) -> None
     assert full["data"]["rows"][0][2] == source
 
 
+def test_node_parms_value_mode_none_does_not_read_values(monkeypatch) -> None:
+    fake_parm = FakeParm(name="dist", path="/obj/x/dist", value=0.25, template_type="Float")
+    fake_parm.valueAsData = lambda: (_ for _ in ()).throw(AssertionError("value evaluated"))
+    fake_node = FakeNode([fake_parm])
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
+
+    result = parm.handle_node_parms_list(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            name=None,
+            parm_type=None,
+            non_default=False,
+            max_parms=10,
+            full_values=False,
+            value_mode="none",
+        )
+    )
+
+    assert result["data"]["rows"] == [["dist", "Float", None, "n"]]
+    assert result["meta"]["value_mode"] == "none"
+
+
+def test_node_parms_summary_bounds_long_strings_and_reports_total(monkeypatch) -> None:
+    fake_node = FakeNode(
+        [
+            FakeParm(name="first", path="/obj/x/first", value="x" * 300, template_type="String"),
+            FakeParm(name="second", path="/obj/x/second", value=2, template_type="Int"),
+        ]
+    )
+    monkeypatch.setattr(parm_common, "localize", lambda value: value)
+    monkeypatch.setattr(node_parms, "connect", FakeConnect(FakeSession(None, fake_node)))
+    monkeypatch.setattr(node_parms, "localize", lambda value: value)
+
+    result = parm.handle_node_parms_list(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/x",
+            name=None,
+            parm_type=None,
+            non_default=False,
+            max_parms=1,
+            full_values=False,
+            value_mode="summary",
+        )
+    )
+
+    value = result["data"]["rows"][0][2]
+    assert value["kind"] == "string"
+    assert value["length"] == 300
+    assert result["meta"] == {
+        "value_mode": "summary",
+        "total": 2,
+        "truncated": True,
+        "max_parms": 1,
+    }
+
+
 def test_handle_find_searches_raw_expression_and_resolved_targets(monkeypatch) -> None:
     external_target = FakeTargetParm("/obj/geo1/copnet1/controller/amount")
     fake_node = FakeNode(

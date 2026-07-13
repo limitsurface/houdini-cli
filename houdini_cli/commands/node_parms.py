@@ -9,6 +9,7 @@ from ..format.envelopes import success_result
 from ..remote.node_parms import NODE_PARMS_REMOTE
 from ..transport.rpyc import connect, localize
 from .parm_common import tuple_members, tuple_name
+from .node_parm_values import bounded_parm_row
 
 
 SKIPPED_TEMPLATE_TYPES = {"Button", "Folder", "FolderSet", "Label", "Separator"}
@@ -126,16 +127,96 @@ def node_parm_rows_in_houdini(
     )
 
 
-def handle_node_parms_list(args: argparse.Namespace) -> dict:
-    with connect(args.host, args.port) as session:
+def bounded_node_parm_rows_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    name: str | None,
+    parm_type: str | None,
+    non_default: bool,
+    value_mode: str,
+    max_parms: int,
+    max_items: int = 10,
+) -> dict[str, Any]:
+    if not hasattr(session, "connection"):
+        node = get_node(session, node_path)
+        matches = [
+            parm
+            for parm in iter_discoverable_parms(node)
+            if matches_parm(parm, name=name, parm_type=parm_type, non_default=non_default)
+        ]
+        rows = [
+            bounded_parm_row(parm, mode=value_mode, max_items=max_items)
+            for parm in matches[:max_parms]
+        ]
+        return {"rows": rows, "total": len(matches), "truncated": len(matches) > len(rows)}
+
+    return localize(
+        NODE_PARMS_REMOTE.evaluate(
+            session.connection,
+            "bounded_rows",
+            node_path,
+            name,
+            parm_type,
+            bool(non_default),
+            value_mode,
+            int(max_parms),
+            int(max_items),
+        )
+    )
+
+
+def _validate_discovery_args(args: argparse.Namespace) -> None:
+    if args.max_parms < 1:
+        raise ValueError("max parms must be at least one")
+    if getattr(args, "full_values", False) and getattr(args, "value_mode", None) is not None:
+        raise ValueError("--full-values cannot be combined with --value-mode")
+
+
+def _discovery_payload(
+    session: Any,
+    args: argparse.Namespace,
+    *,
+    name: str | None,
+    parm_type: str | None,
+) -> tuple[list[list[Any]], dict[str, Any] | None]:
+    value_mode = getattr(args, "value_mode", None)
+    if value_mode is None:
         rows = node_parm_rows_in_houdini(
             session,
             args.node_path,
-            name=None,
-            parm_type=None,
+            name=name,
+            parm_type=parm_type,
             non_default=args.non_default,
             full_values=getattr(args, "full_values", False),
             max_parms=args.max_parms,
+        )
+        return rows, None
+    bounded = bounded_node_parm_rows_in_houdini(
+        session,
+        args.node_path,
+        name=name,
+        parm_type=parm_type,
+        non_default=args.non_default,
+        value_mode=value_mode,
+        max_parms=args.max_parms,
+    )
+    return bounded["rows"], {
+        "value_mode": value_mode,
+        "total": int(bounded["total"]),
+        "truncated": bool(bounded["truncated"]),
+        "max_parms": args.max_parms,
+    }
+
+
+def handle_node_parms_list(args: argparse.Namespace) -> dict:
+    _validate_discovery_args(args)
+    with connect(args.host, args.port) as session:
+        rows, meta = _discovery_payload(
+            session,
+            args,
+            name=getattr(args, "name", None),
+            parm_type=getattr(args, "parm_type", None),
         )
         return success_result(
             {
@@ -143,21 +224,15 @@ def handle_node_parms_list(args: argparse.Namespace) -> dict:
                 "count": len(rows),
                 "cols": ["p", "t", "v", "f"],
                 "rows": rows,
-            }
+            },
+            meta=meta,
         )
 
 
 def handle_node_parms_find(args: argparse.Namespace) -> dict:
+    _validate_discovery_args(args)
     with connect(args.host, args.port) as session:
-        rows = node_parm_rows_in_houdini(
-            session,
-            args.node_path,
-            name=args.name,
-            parm_type=args.parm_type,
-            non_default=args.non_default,
-            full_values=getattr(args, "full_values", False),
-            max_parms=args.max_parms,
-        )
+        rows, meta = _discovery_payload(session, args, name=args.name, parm_type=args.parm_type)
         return success_result(
             {
                 "node": args.node_path,
@@ -173,5 +248,6 @@ def handle_node_parms_find(args: argparse.Namespace) -> dict:
                 "count": len(rows),
                 "cols": ["p", "t", "v", "f"],
                 "rows": rows,
-            }
+            },
+            meta=meta,
         )
