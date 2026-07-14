@@ -23,9 +23,11 @@ HDA_TOPIC = {'description': 'Create, inspect, package, update, and validate Houd
                                   '[options]'},
               'update': {'description': 'Update selected HDA definition surfaces from an editable instance.',
                          'usage': 'houdini-cli hda update <asset-node> [--contents] [--interface] [--sections] '
-                                  '[--tools] [--all] [--validate]',
+                                  '[--tools] [--all] [--validate] [--validate-cook]',
                          'notes': ['without surface flags, contents is updated; --all uses contents -> interface -> '
-                                   'sections -> tools -> save -> match -> validate']},
+                                   'sections -> tools -> save -> match -> validate',
+                                   '--validate creates a fresh instance for structural checks without forcing a cook',
+                                   '--validate-cook opts into a synchronous forced cook and may block Houdini']},
               'save': {'description': 'Save an HDA definition to its current or specified library.',
                        'usage': 'houdini-cli hda save <asset-node> [--library PATH]'},
               'instantiate': {'description': 'Create a new instance of an installed HDA type.',
@@ -69,7 +71,7 @@ HDA_TOPIC = {'description': 'Create, inspect, package, update, and validate Houd
                                                           '--name NAME [options]'},
                                      'defaults': {'description': 'Synchronize HDA defaults from current values.',
                                                   'usage': 'houdini-cli hda parms defaults <asset-node> '
-                                                           '--from-current'}}},
+                                                           '--from-current [--folder PATH]'}}},
               'section': {'description': 'List, read, write, or delete embedded HDA definition sections.',
                           'children': {'list': {'description': 'List embedded section names and sizes.',
                                                 'usage': 'houdini-cli hda section list <asset-node>'},

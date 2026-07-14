@@ -472,17 +472,39 @@ def handle_parms_defaults(args: argparse.Namespace) -> dict:
     if not args.from_current:
         raise ValueError("Currently requires --from-current")
     with connect(args.host, args.port) as session:
-        result = _set_defaults_from_current_in_houdini(session, args.asset_node)
+        folder = getattr(args, "folder", None)
+        names = None
+        if folder:
+            rows = _flat_parm_rows_in_houdini(
+                session,
+                args.asset_node,
+                folder_filter=folder,
+            )
+            names = [row[0] for row in rows]
+            if not names:
+                raise ValueError(f"No published HDA parameters found below folder: {folder}")
+        result = _set_defaults_from_current_in_houdini(
+            session,
+            args.asset_node,
+            names=names,
+        )
         return success_result(
             {
                 "asset_node": args.asset_node,
+                "folder": folder,
                 "updated_defaults": result["updated_defaults"],
                 "library": result["library"],
             }
         )
 
 
-def _set_defaults_from_current_in_houdini(session: Any, node_path: str) -> dict[str, Any]:
+def _set_defaults_from_current_in_houdini(
+    session: Any,
+    node_path: str,
+    *,
+    names: list[str] | None = None,
+) -> dict[str, Any]:
+    allowed_names = set(names) if names is not None else None
     if not hasattr(session, "connection"):
         node = get_node(session, node_path)
         definition = definition_for_node(node)
@@ -494,6 +516,8 @@ def _set_defaults_from_current_in_houdini(session: Any, node_path: str) -> dict[
             if name in visited:
                 continue
             visited.add(name)
+            if allowed_names is not None and name not in allowed_names:
+                continue
             template = group.find(name)
             if template is None:
                 continue
@@ -514,7 +538,7 @@ def _set_defaults_from_current_in_houdini(session: Any, node_path: str) -> dict[
     source = r"""
 import hou
 
-def _houdini_cli_hda_defaults_from_current(node_path):
+def _houdini_cli_hda_defaults_from_current(node_path, names):
     node = hou.node(node_path)
     if node is None:
         raise ValueError("Node not found: " + node_path)
@@ -523,6 +547,7 @@ def _houdini_cli_hda_defaults_from_current(node_path):
         raise ValueError("Node is not an HDA instance: " + node_path)
 
     group = definition.parmTemplateGroup()
+    allowed_names = set(names) if names is not None else None
     count = 0
     visited = set()
     for parm in node.parms():
@@ -530,6 +555,8 @@ def _houdini_cli_hda_defaults_from_current(node_path):
         if name in visited:
             continue
         visited.add(name)
+        if allowed_names is not None and name not in allowed_names:
+            continue
         template = group.find(name)
         if template is None:
             continue
@@ -551,5 +578,7 @@ def _houdini_cli_hda_defaults_from_current(node_path):
 """
     session.connection.execute(source)
     return localize(
-        session.connection.eval(f"_houdini_cli_hda_defaults_from_current({node_path!r})")
+        session.connection.eval(
+            f"_houdini_cli_hda_defaults_from_current({node_path!r}, {names!r})"
+        )
     )

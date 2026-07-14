@@ -234,3 +234,55 @@ def test_flat_parm_rows_filter_by_folder_and_name() -> None:
     assert hda_parms._flat_parm_rows(
         FlatNode(), entries, folder_filter="vhs", name_filter="filter"
     ) == [["filter_type", "Low-Pass Filter Type", "Menu", "VHS FX"]]
+
+
+class FakeConnect:
+    def __init__(self, session):
+        self.session = session
+
+    def __call__(self, _host, _port):
+        return self
+
+    def __enter__(self):
+        return self.session
+
+    def __exit__(self, _exc_type, _exc, _traceback):
+        return False
+
+
+def test_defaults_folder_updates_only_matching_parameter_names(monkeypatch) -> None:
+    session = SimpleNamespace()
+    captured = {}
+    monkeypatch.setattr(hda_parms, "connect", FakeConnect(session))
+    monkeypatch.setattr(
+        hda_parms,
+        "_flat_parm_rows_in_houdini",
+        lambda _session, _path, **kwargs: [
+            ["noise_enable", "Enable", "Toggle", "Composite/Noise & Defects"],
+            ["snow_intensity", "Intensity", "Float", "Composite/Noise & Defects"],
+        ],
+    )
+
+    def fake_update(_session, node_path, *, names):
+        captured["node_path"] = node_path
+        captured["names"] = names
+        return {"updated_defaults": len(names), "library": "test.hda"}
+
+    monkeypatch.setattr(hda_parms, "_set_defaults_from_current_in_houdini", fake_update)
+    args = SimpleNamespace(
+        host="localhost",
+        port=18811,
+        asset_node="/obj/composite1",
+        from_current=True,
+        folder="Noise & Defects",
+    )
+
+    result = hda_parms.handle_parms_defaults(args)
+
+    assert result["ok"] is True
+    assert result["data"]["updated_defaults"] == 2
+    assert result["data"]["folder"] == "Noise & Defects"
+    assert captured == {
+        "node_path": "/obj/composite1",
+        "names": ["noise_enable", "snow_intensity"],
+    }

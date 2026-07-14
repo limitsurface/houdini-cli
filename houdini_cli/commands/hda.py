@@ -132,6 +132,11 @@ def register_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     update.add_argument("--no-save", action="store_true")
     update.add_argument("--no-match", action="store_true")
     update.add_argument("--validate", action="store_true")
+    update.add_argument(
+        "--validate-cook",
+        action="store_true",
+        help="Force-cook the fresh validation instance; implies --validate and may block Houdini.",
+    )
     update.set_defaults(handler=handle_update)
 
     validate = subs.add_parser("validate", help="Validate an HDA definition and instance.")
@@ -273,4 +278,8 @@ def _register_parms(subs: Any) -> None:
     defaults = nested.add_parser("defaults")
     defaults.add_argument("asset_node")
     defaults.add_argument("--from-current", action="store_true")
+    defaults.add_argument(
+        "--folder",
+        help="Only update parameters below this case-insensitive folder path or label.",
+    )
     defaults.set_defaults(handler=handle_parms_defaults)

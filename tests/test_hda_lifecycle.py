@@ -22,6 +22,12 @@ class FakeDefinition:
     def setParmTemplateGroup(self, value):
         self.parm_template_group = value
 
+    def sections(self):
+        return {}
+
+    def updateFromNode(self, node):
+        self.updated_from = node
+
 
 class FakeAsset:
     def __init__(self) -> None:
@@ -130,3 +136,87 @@ def test_handle_create_copies_source_interface(monkeypatch) -> None:
 
     assert result["ok"] is True
     assert asset.definition.parm_template_group is asset.ptg
+
+
+def _update_args(**overrides):
+    values = {
+        "host": "localhost",
+        "port": 18811,
+        "asset_node": "/obj/geo1/asset1",
+        "contents": True,
+        "interface": False,
+        "sections": False,
+        "tools": False,
+        "all": False,
+        "no_save": False,
+        "no_match": False,
+        "validate": True,
+        "validate_cook": False,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _patch_update_basics(monkeypatch, asset):
+    monkeypatch.setattr(
+        hda_lifecycle,
+        "connect",
+        FakeConnect(SimpleNamespace(hou=SimpleNamespace())),
+    )
+    monkeypatch.setattr(hda_lifecycle, "get_node", lambda _session, _path: asset)
+    monkeypatch.setattr(hda_lifecycle, "definition_for_node", lambda _asset: asset.definition)
+    monkeypatch.setattr(hda_lifecycle, "save_definition", lambda _definition: "test.hda")
+
+
+def test_handle_update_validate_does_not_force_cook(monkeypatch) -> None:
+    asset = FakeAsset()
+    _patch_update_basics(monkeypatch, asset)
+    calls = []
+
+    def fake_validation(_session, _asset, **kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(hda_lifecycle, "validate_asset", fake_validation)
+
+    result = hda_lifecycle.handle_update(_update_args())
+
+    assert result["ok"] is True
+    assert calls == [{"fresh": True, "cook": False, "frames": []}]
+    assert asset.matched is True
+
+
+def test_handle_update_validate_cook_is_explicit(monkeypatch) -> None:
+    asset = FakeAsset()
+    _patch_update_basics(monkeypatch, asset)
+    calls = []
+
+    def fake_validation(_session, _asset, **kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(hda_lifecycle, "validate_asset", fake_validation)
+
+    result = hda_lifecycle.handle_update(
+        _update_args(validate=False, validate_cook=True)
+    )
+
+    assert result["ok"] is True
+    assert calls == [{"fresh": True, "cook": True, "frames": []}]
+
+
+def test_handle_update_reports_validation_failure_after_saving(monkeypatch) -> None:
+    asset = FakeAsset()
+    _patch_update_basics(monkeypatch, asset)
+    monkeypatch.setattr(
+        hda_lifecycle,
+        "validate_asset",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cook failed")),
+    )
+
+    result = hda_lifecycle.handle_update(_update_args())
+
+    assert result["ok"] is True
+    assert result["data"]["library"] == "test.hda"
+    assert result["data"]["validation"]["ok"] is False
+    assert result["data"]["validation"]["error"]["message"] == "cook failed"

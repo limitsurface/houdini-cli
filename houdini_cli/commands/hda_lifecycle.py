@@ -98,6 +98,15 @@ def _post_package_validation(session: Any, asset: Any, args: argparse.Namespace)
         return {"ok": False, "error": error_result(exc)["error"]}
 
 
+def _post_update_validation(session: Any, asset: Any, *, cook: bool) -> dict:
+    try:
+        result = validate_asset(session, asset, fresh=True, cook=cook, frames=[])
+        result.setdefault("ok", True)
+        return result
+    except Exception as exc:
+        return {"ok": False, "error": error_result(exc)["error"]}
+
+
 def handle_create(args: argparse.Namespace) -> dict:
     node_path = _create_asset_phase(args)
     with connect(args.host, args.port) as session:
@@ -233,9 +242,10 @@ def handle_update(args: argparse.Namespace) -> dict:
         library = None if args.no_save else save_definition(definition)
         if not args.no_match:
             node.matchCurrentDefinition()
+        validate_cook = bool(getattr(args, "validate_cook", False))
         validation = (
-            validate_asset(session, node, fresh=True, cook=True, frames=[])
-            if args.validate or args.all
+            _post_update_validation(session, node, cook=validate_cook)
+            if args.validate or validate_cook or args.all
             else None
         )
         return success_result(
