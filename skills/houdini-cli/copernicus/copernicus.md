@@ -233,6 +233,11 @@ User-authored OpenCL COP kernels can use atomics when the target layer is bound
 as writable/inout with `&`. Regular layer bindings do not expose raw storage;
 use the generated `.data` pointer on an `&` binding:
 
+Prefer integer atomics for counts. Feed `&counts int` from a fresh zero-filled,
+32-bit ID Layer at the target resolution (not a Mono Constant), and consume the
+generated `counts` output. Reset it for every accumulation pass; do not feed it
+back as simulation state. Use `x + y * xres` for linear indexing.
+
 ```c
 #bind layer src float
 #bind layer &counts int
@@ -273,7 +278,8 @@ static void atomic_add_float_global(global float *addr, float val)
 ```
 
 Keep atomic branches isolated and validate/cook them before using them in a
-solver; atomics can serialize hot spots and make failures harder to debug.
+solver. A bad atomic kernel may leave NVIDIA OpenCL reporting
+`CL_OUT_OF_RESOURCES` / `clEnqueueWriteBuffer (-5)` until Houdini restarts.
 
 ### Neighborhood Sampling
 
