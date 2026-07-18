@@ -22,6 +22,7 @@ ARCHIVES_TO_EXTRACT = [
     "io",
     "model",
     "mplay",
+    "news",
     "nodes",
     "network",
     "shelf",

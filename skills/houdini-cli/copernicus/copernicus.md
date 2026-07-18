@@ -37,7 +37,8 @@ Prefer direct COP data inspection over viewport screenshots when debugging pixel
 - The longest image dimension spans approximately `-1` to `1`.
 - The shorter dimension has a proportionally smaller range.
 
-At `640x360`, pixel centers span approximately:
+For a standard full-frame `640x360` output whose data and display windows
+match, buffer-element centers span approximately:
 
 ```text
 X: -0.9984 to 0.9984
@@ -45,6 +46,22 @@ Y: -0.5609 to 0.5609
 ```
 
 Do **not** multiply `@P.x` by `@xres / @yres` for aspect correction. `@P` is already aspect-aware; `length(@P)` produces a circle on a non-square image.
+
+Image and texture space do not necessarily cover the same rectangle. Image
+space is fitted across the display window, while texture space spans the data
+window and its buffer. When those windows differ because of a crop, offset, or
+overscan, the cooked buffer covers only part of the image-space domain. See
+the bundled [SideFX Copernicus spaces](../help_prepared/copernicus/spaces.txt).
+
+The global position binding can request a space explicitly:
+
+- `@P.image` is image space and is the default `@P`.
+- `@P.texture` is texture space.
+- `@P.pixel` is canonical pixel space.
+- `@P.world` is 3D world space.
+
+Position derivatives support `.image`, `.texture`, and `.pixel`; a `.world`
+derivative suffix is not documented.
 
 ### Sampling and Bindings
 
@@ -71,8 +88,8 @@ Coordinate-specific accessors:
 | :--- | :--- |
 | Image space | `@src.imageSample(float2)` or `@src` at `@P` |
 | Texture space | `@src.textureSample(float2)` |
-| Floating-point buffer space | `@src.bufferSample(float2)` |
-| Integer buffer space | `@src.bufferIndex(int2)` |
+| Buffer space, interpolated | `@src.bufferSample(float2)` |
+| Buffer space, discrete | `@src.bufferIndex(int2)` |
 
 Do not assume `@P * 0.5f + 0.5f` converts image space to texture space on non-square images. Use transforms:
 
@@ -80,9 +97,12 @@ Do not assume `@P * 0.5f + 0.5f` converts image space to texture space on non-sq
 float2 uv = @src.bufferToTexture(@src.imageToBuffer(@P));
 ```
 
-### Discrete Pixel Math
+### Discrete Buffer Indexing
 
-`@ixy` is an `int2` from `(0, 0)` to `@res - 1`. Use it for grids, blocks, pixelation, and exact pixel access:
+`@ixy` is the current integer buffer index, from `(0, 0)` to `@res - 1`.
+It is not canonical pixel space: the data window may position buffer index
+`(0, 0)` at a different pixel-space coordinate. Use `@ixy` for grids, blocks,
+pixelation, and exact buffer-element access:
 
 ```c
 int2 snappedIxy = (@ixy / @pixel_size) * @pixel_size;
@@ -91,7 +111,9 @@ sampleIxy = clamp(sampleIxy, (int2)(0, 0), @res - 1);
 float4 color = @src.bufferIndex(sampleIxy);
 ```
 
-Integer pixel math produces square pixel blocks regardless of image dimensions. Center sampling avoids boundary ambiguity; clamping prevents invalid indexed access.
+Integer buffer math produces square element blocks regardless of image
+dimensions. Center sampling avoids boundary ambiguity; clamping prevents
+invalid indexed access.
 
 ## Binding Symbols
 
@@ -167,6 +189,23 @@ Use `options_iterations` to re-execute one OpenCL COP kernel on-GPU; enable
 available only when **Include Timestep** is enabled; **Use Context's
 Timestep** controls whether that value comes from the surrounding context.
 
+### Houdini 22 Time Nodes
+
+Houdini 22 adds a small set of COPs for evaluating, interpolating, packing, and
+rearranging time-dependent inputs:
+
+| Node | Overview | Full help |
+| :--- | :--- | :--- |
+| Time Shift | Cooks an input at an absolute or relative frame/time. | [Time Shift](../help_prepared/nodes/cop/timeshift.txt) |
+| Time Blend | Interpolates layers or VDBs between neighboring integer frames. | [Time Blend](../help_prepared/nodes/cop/timeblend.txt) |
+| Time Pack | Samples a frame/time range and packages the results into a cable. | [Time Pack](../help_prepared/nodes/cop/timepack.txt) |
+| Time Loop | Cycles, zig-zags, or blends a frame range into a repeating sequence. | [Time Loop](../help_prepared/nodes/cop/timeloop.txt) |
+| Sequence | Extracts clips from one or more inputs and arranges them temporally. | [Sequence](../help_prepared/nodes/cop/sequence.txt) |
+
+A Time Shift inside a block cannot request a different cook time from a block
+input. When a block needs neighboring or historical frames, Time Pack those
+frames before the Block Begin and pass the resulting cable into the block.
+
 ## Simulations and Blocks
 
 Copernicus simulations use a Block Begin and Block End pair to feed the block's
@@ -201,6 +240,26 @@ attributes into layers. Preserving attributes such as original position and
 normal allows UV-space effects to remain aware of geometry-space position,
 orientation, and other SOP data. This provides a practical bridge between
 geometry, image, UV, and world-space processing.
+
+### Houdini 22 Adjacency
+
+Adjacency cables describe how pixels on separate UV islands meet across
+texture seams. Build one from UV-mapped geometry, then pass it to
+adjacency-aware nodes so sampling, distortion, vector transforms, and boundary
+operations remain continuous across those seams. See the full
+[SideFX adjacency workflow](../help_prepared/copernicus/adjacency.txt).
+
+| Node | Overview | Full help |
+| :--- | :--- | :--- |
+| Geometry to Adjacency | Triangulates and rasterizes geometry into an adjacency cable using a vertex UV attribute. | [Geometry to Adjacency](../help_prepared/nodes/cop/geotoadjacency.txt) |
+| Attribute Sample with Adjacency | Rasterizes a point, vertex, or primitive attribute into a seam-aware texture map. | [Attribute Sample with Adjacency](../help_prepared/nodes/cop/adjacency_attribsample.txt) |
+| Distort with Adjacency | Traces distortion across UV-island boundaries. | [Distort with Adjacency](../help_prepared/nodes/cop/adjacency_distort.txt) |
+| Extrapolate with Adjacency | Fills UV shorelines from adjacent islands so ordinary downstream filters can cross seams. | [Extrapolate with Adjacency](../help_prepared/nodes/cop/adjacency_extrapolate.txt) |
+| Space Transform with Adjacency | Converts world-space vectors into the surface's tangent/UV space. | [Space Transform with Adjacency](../help_prepared/nodes/cop/adjacency_spacetransform.txt) |
+
+For best results, the target texture should match the rasterized adjacency
+maps. Geometry to Adjacency triangulates its input; n-gons can still introduce
+distortion when sampling attributes.
 
 Keep operations that do not depend on previous simulation results outside the
 block when possible. Bring external data into the block only when it must be

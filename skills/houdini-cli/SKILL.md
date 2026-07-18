@@ -25,6 +25,43 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 - Before Gas OpenCL or DOP GPU microsolver work, read `opencl/opencl_dops.md`.
 - For routine OpenCL work, use the documented patterns without broad native-node inspection. Inspect shipped kernels selectively when behavior is unfamiliar, solver-specific, synchronization-heavy, or unclear from the prepared help.
 
+## Scene Implementation Priorities
+
+- Prefer existing native Houdini nodes when they express the operation clearly.
+  For custom geometry, volume, and image processing that lives in a Houdini
+  scene, prefer context-appropriate compiled languages over embedded Python.
+- VEX should normally be the first custom-code option for geometry processing.
+  Consider OpenCL when the workload is highly parallel, already GPU-resident,
+  or large enough to benefit materially from GPU execution.
+- Keep Copernicus processing on the GPU as much as practical. Prefer native COP
+  nodes and OpenCL for per-pixel, per-voxel, neighborhood, iterative, and other
+  bulk data processing. Avoid using Python to loop over image or geometry
+  elements when the work can be expressed as an OpenCL kernel or suitable
+  native node.
+- Hybrid Python/OpenCL designs are appropriate when responsibilities are
+  divided cleanly. Python can parse files, interpret irregular structures,
+  prepare metadata, select resources, or convert external data into regular
+  layers, attributes, or buffers; OpenCL should then perform the repeated
+  high-volume processing.
+- Do not default to Python SOPs, Python snippets, or embedded Python merely
+  because they are easier to author. Use Python when it offers a genuinely
+  clearer solution for orchestration, metadata, variable or string-heavy data
+  wrangling, external libraries, or small workloads where its performance cost
+  is insignificant.
+- Before implementing geometry processing in a Detail Wrangle, consider
+  whether the operation can run independently over points, primitives, or
+  vertices, or whether an OpenCL or native-node formulation would provide
+  useful parallelism.
+- Detail Wrangles remain appropriate for inherently sequential work,
+  topology-wide coordination, small global operations, prototypes, and cases
+  where a parallel implementation would add disproportionate complexity.
+- A simple Python or Detail Wrangle prototype is acceptable for proving
+  behavior. If it becomes the delivered implementation, briefly assess its
+  expected data scale and whether a practical parallel alternative exists.
+- If a parallel approach fails or proves unreliable, prefer a correct fallback
+  and record the performance tradeoff rather than forcing an unsuitable
+  optimization.
+
 ## Recipes
 
 - Recipes store parameter presets or reusable node setups as Data assets. Tool recipes appear alongside ordinary node types in discovery with `kind: recipe`.
