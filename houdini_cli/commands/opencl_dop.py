@@ -5,8 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from ..transport.rpyc import localize
-from .opencl_bindings import binding_scalar, binding_vector, desired_binding_row_summary, node_messages
-from .opencl_spares import set_binding_value_expression, spare_parm_name, sync_spare_parms_preserving_values
+from .opencl_bindings import (
+    binding_scalar,
+    binding_vector,
+    desired_binding_row_summary,
+    node_messages,
+)
+from .opencl_spares import (
+    set_binding_value_expression,
+    spare_parm_component_names,
+    sync_spare_parms_preserving_values,
+)
 
 
 _DOP_SPARE_PARM_BINDING_TYPES = {"int", "float", "float3", "float4"}
@@ -106,10 +115,10 @@ def link_dop_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
     }
     for index, binding in enumerate(bindings, start=1):
         binding_type = str(binding_scalar(binding, "type"))
-        spare_name = spare_parm_name(binding)
+        sources = spare_parm_component_names(opencl_node, binding)
         for component, suffix in enumerate(suffixes.get(binding_type, []), start=1):
             target = f"parameter{index}{suffix}"
-            source = spare_name if len(suffixes[binding_type]) == 1 else f"{spare_name}{component}"
+            source = sources[component - 1]
             set_binding_value_expression(opencl_node, target, f'ch("./{source}")')
 
 

@@ -243,3 +243,47 @@ def safe_cook(node: Any) -> None:
         cook()
     except Exception:
         return
+
+
+def _nested_parm_templates(template: Any) -> list[Any]:
+    result = []
+    for child in getattr(template, "parmTemplates", lambda: ())():
+        result.append(child)
+        result.extend(_nested_parm_templates(child))
+    return result
+
+
+def supported_binding_types(opencl_node: Any) -> set[str] | None:
+    context = opencl_context(opencl_node)
+    count_name = "paramcount" if context == "dop" else "bindings"
+    type_suffix = "Type" if context == "dop" else "_type"
+    count_parm = opencl_node.parm(count_name)
+    if count_parm is None:
+        return None
+    try:
+        templates = _nested_parm_templates(count_parm.parmTemplate())
+        type_template = next(
+            template
+            for template in templates
+            if str(template.name()).endswith(type_suffix)
+        )
+        return {str(item) for item in type_template.menuItems()}
+    except Exception:
+        return None
+
+
+def preflight_binding_types(opencl_node: Any, bindings: list[Any]) -> None:
+    supported = supported_binding_types(opencl_node)
+    if not supported:
+        return
+    unsupported = [
+        (str(binding_scalar(binding, "name")), str(binding_scalar(binding, "type")))
+        for binding in bindings
+        if str(binding_scalar(binding, "type")) not in supported
+    ]
+    if unsupported:
+        details = ", ".join(f"{name} ({kind})" for name, kind in unsupported)
+        raise ValueError(
+            f"Unsupported OpenCL {opencl_context(opencl_node).upper()} bindings for this Houdini build: {details}. "
+            f"Supported types: {', '.join(sorted(supported))}"
+        )

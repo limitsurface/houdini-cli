@@ -13,6 +13,7 @@ from .opencl_bindings import (
     compact_validation,
     is_cop_opencl,
     opencl_context,
+    preflight_binding_types,
     safe_cook,
 )
 from .opencl_cop import (
@@ -123,17 +124,53 @@ def _validation_summary(
 ) -> dict[str, Any]:
     context = opencl_context(opencl_node)
     if context == "dop":
-        return dop_validation_summary(opencl_node, bindings=bindings, runover=runover)
-    if context == "sop":
-        return sop_validation_summary(opencl_node, bindings=bindings, runover=runover)
-    if context == "cop":
-        return cop_validation_summary(
+        result = dop_validation_summary(opencl_node, bindings=bindings, runover=runover)
+    elif context == "sop":
+        result = sop_validation_summary(opencl_node, bindings=bindings, runover=runover)
+    elif context == "cop":
+        result = cop_validation_summary(
             opencl_node,
             bindings=bindings,
             runover=runover,
             current_state=current_state,
         )
-    raise ValueError(f"Unsupported OpenCL context: {context}")
+    else:
+        raise ValueError(f"Unsupported OpenCL context: {context}")
+    bad_refs = [
+        message
+        for message in result.get("warnings", [])
+        if "Bad parameter reference" in message
+    ]
+    if bad_refs:
+        result["ok"] = False
+        result["sync_required"] = True
+        result.setdefault("hints", []).append("One or more OpenCL binding rows reference missing control parameters.")
+    usecode = opencl_node.parm("usecode")
+    if (
+        usecode is not None
+        and not bool(usecode.eval())
+        and opencl_node.parm("kernelcode").evalAsString()
+    ):
+        result["ok"] = False
+        result["sync_required"] = True
+        result.setdefault("hints", []).append(
+            "Kernel Code is populated but Use Code Snippet is disabled; opencl sync will enable it."
+        )
+    atbinding = opencl_node.parm("atbinding")
+    kernel_code = opencl_node.parm("kernelcode").evalAsString()
+    if (
+        atbinding is not None
+        and ("#bind" in kernel_code or "@KERNEL" in kernel_code)
+        and not bool(atbinding.eval())
+    ):
+        result["ok"] = False
+        result["sync_required"] = True
+        result.setdefault("hints", []).append(
+            "Kernel Code uses @-binding directives but Enable @-Binding is disabled; opencl sync will enable it."
+        )
+    return result
+
+
 def handle_sync(args: argparse.Namespace) -> dict:
     with connect(args.host, args.port) as session:
         opencl_node = get_node(session, args.node_path)
@@ -143,6 +180,20 @@ def handle_sync(args: argparse.Namespace) -> dict:
         kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
         bindings = list(session.hou.text.oclExtractBindings(kernel_code))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
+
+        if not kernel_code.strip():
+            raise ValueError("Kernel Code is empty; OpenCL sync does not rebuild external-kernel interfaces.")
+        preflight_binding_types(opencl_node, bindings)
+        usecode = opencl_node.parm("usecode")
+        if usecode is not None and not bool(usecode.eval()):
+            usecode.set(True)
+        atbinding = opencl_node.parm("atbinding")
+        if (
+            atbinding is not None
+            and ("#bind" in kernel_code or "@KERNEL" in kernel_code)
+            and not bool(atbinding.eval())
+        ):
+            atbinding.set(True)
 
         summary = _apply_signature(
             session,

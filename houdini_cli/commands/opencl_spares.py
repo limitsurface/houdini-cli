@@ -136,8 +136,16 @@ def _sync_spare_parms(session: Any, opencl_node: Any, bindings: list[Any]) -> li
     return _manual_sync_spare_parms(session, opencl_node, desired_bindings)
 
 
-def _spare_parm_component_names(binding: Any) -> list[str]:
+def spare_parm_component_names(opencl_node: Any, binding: Any) -> list[str]:
     name = spare_parm_name(binding)
+    parm_tuple = getattr(opencl_node, "parmTuple", lambda _name: None)(name)
+    if parm_tuple is None:
+        parm_tuple = getattr(opencl_node, "parmTuple", lambda _name: None)(f"{name}_val")
+    if parm_tuple is not None:
+        try:
+            return [str(localize(parm.name())) for parm in parm_tuple]
+        except Exception:
+            pass
     binding_type = str(_binding_scalar(binding, "type"))
     component_counts = {"float2": 2, "float3": 3, "float4": 4}
     count = component_counts.get(binding_type, 1)
@@ -149,7 +157,7 @@ def _spare_parm_component_names(binding: Any) -> list[str]:
 def _capture_spare_parm_state(opencl_node: Any, bindings: list[Any]) -> dict[str, dict[str, Any]]:
     states: dict[str, dict[str, Any]] = {}
     for binding in bindings:
-        for name in _spare_parm_component_names(binding):
+        for name in spare_parm_component_names(opencl_node, binding):
             parm = opencl_node.parm(name)
             if parm is None:
                 continue
@@ -243,25 +251,31 @@ def link_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
         elif binding_type == "float":
             set_binding_value_expression(opencl_node, f"{prefix}fval", expression)
         elif binding_type == "float2":
-            for component in range(1, 3):
+            for component, source in enumerate(
+                spare_parm_component_names(opencl_node, binding), start=1
+            ):
                 set_binding_value_expression(
                     opencl_node,
                     f"{prefix}v2val{component}",
-                    f'ch("./{spare_name}{component}")',
+                    f'ch("./{source}")',
                 )
         elif binding_type == "float3":
-            for component in range(1, 4):
+            for component, source in enumerate(
+                spare_parm_component_names(opencl_node, binding), start=1
+            ):
                 set_binding_value_expression(
                     opencl_node,
                     f"{prefix}v3val{component}",
-                    f'ch("./{spare_name}{component}")',
+                    f'ch("./{source}")',
                 )
         elif binding_type == "float4":
-            for component in range(1, 5):
+            for component, source in enumerate(
+                spare_parm_component_names(opencl_node, binding), start=1
+            ):
                 set_binding_value_expression(
                     opencl_node,
                     f"{prefix}v4val{component}",
-                    f'ch("./{spare_name}{component}")',
+                    f'ch("./{source}")',
                 )
         elif binding_type == "ramp":
             suffix = "ramp_rgb" if str(_binding_scalar(binding, "ramptype")) == "vector" else "ramp"

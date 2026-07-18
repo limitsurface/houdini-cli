@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from houdini_cli.commands import opencl, opencl_cop
+from houdini_cli.commands import opencl, opencl_cop, opencl_spares
 
 
 class FakeParm:
@@ -515,6 +515,46 @@ def test_handle_sync_creates_and_links_float_and_color_ramps(monkeypatch) -> Non
     folder = node_obj._group.entries()[0]
     assert folder.name() == "folder_generatedparms_kernelcode"
     assert [child.name() for child in folder.parmTemplates()] == ["curve", "colors"]
+
+
+def test_vector_binding_links_use_actual_tuple_component_names() -> None:
+    binding = _binding(name="tint", type="float3")
+    node_obj = FakeOpenclNode()
+    components = tuple(FakeParm(0.0) for _ in range(3))
+    for parm, name in zip(components, ("tintx", "tinty", "tintz")):
+        parm.name = lambda name=name: name
+    node_obj.parmTuple = lambda name: components if name == "tint" else None
+    for index in range(1, 4):
+        node_obj._parms[f"bindings1_v3val{index}"] = FakeParm(0.0)
+
+    opencl_spares.link_binding_value_parms(node_obj, [binding])
+
+    assert node_obj.parm("bindings1_v3val1").last_expression == 'ch("./tintx")'
+    assert node_obj.parm("bindings1_v3val2").last_expression == 'ch("./tinty")'
+    assert node_obj.parm("bindings1_v3val3").last_expression == 'ch("./tintz")'
+
+
+def test_handle_sync_enables_inline_code_mode(monkeypatch) -> None:
+    bindings = [_binding(name="gain", type="float", fval=2.0)]
+    node_obj = FakeOpenclNode()
+    node_obj._parms["usecode"] = FakeParm(False)
+    node_obj._parms["atbinding"] = FakeParm(False)
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert node_obj.parm("usecode").last_set is True
+    assert node_obj.parm("atbinding").last_set is True
 
 
 def test_handle_sync_can_preserve_generated_spare_expression(monkeypatch) -> None:
