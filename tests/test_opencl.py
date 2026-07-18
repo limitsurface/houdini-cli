@@ -267,6 +267,9 @@ class FakeTemplate:
     def type(self):
         return FakeType(self._template_type)
 
+    def parmType(self):
+        return getattr(self, "_parm_type", None)
+
 
 class FakeFolderParmTemplate(FakeTemplate):
     def __init__(self, name, label) -> None:
@@ -354,6 +357,18 @@ class FakeSession:
     def FolderParmTemplate(self, name, label):
         return FakeFolderParmTemplate(name, label)
 
+    class rampParmType:
+        Float = "Float"
+        Color = "Color"
+
+    class rampBasis:
+        Linear = "Linear"
+
+    def RampParmTemplate(self, name, label, ramp_type, **kwargs):
+        template = FakeTemplate(name, label, "Ramp")
+        template._parm_type = ramp_type
+        return template
+
     def createSpareParmsFromOCLBindings(self, node, parmname):
         folder = FakeFolderParmTemplate(
             "folder_generatedparms_kernelcode",
@@ -405,6 +420,7 @@ def _binding(**kwargs):
         "optiontype": "float",
         "optionsize": 1,
         "rampsize": 1024,
+        "ramptype": "float",
         "attribute": "",
         "attribclass": "detail",
         "attribtype": "float",
@@ -463,6 +479,42 @@ def test_handle_sync_rebuilds_signature_and_bindings(monkeypatch) -> None:
     folder = node_obj._group.entries()[0]
     assert folder.name() == "folder_generatedparms_kernelcode"
     assert [child.name() for child in folder.parmTemplates()] == ["gain"]
+
+
+def test_handle_sync_creates_and_links_float_and_color_ramps(monkeypatch) -> None:
+    bindings = [
+        _binding(name="curve", type="ramp", ramptype="float", rampsize=256),
+        _binding(name="colors", type="ramp", ramptype="vector", rampsize=512),
+    ]
+    node_obj = FakeOpenclNode()
+    node_obj._parms["bindings1_ramp"] = FakeParm("")
+    node_obj._parms["bindings2_ramp_rgb"] = FakeParm("")
+    monkeypatch.setattr(opencl, "connect", FakeConnect(FakeSession(node_obj, bindings)))
+    monkeypatch.setattr(opencl, "localize", lambda value: value)
+
+    result = opencl.handle_sync(
+        Namespace(
+            host="localhost",
+            port=18811,
+            node_path="/obj/cops/opencl1",
+            clear=False,
+            bindings_only=False,
+        )
+    )
+
+    assert result["ok"] is True
+    payload = node_obj.set_parms_calls[2]
+    assert payload["bindings1_rampsize"] == 256
+    assert payload["bindings1_ramptype"] == "float"
+    assert payload["bindings2_rampsize"] == 512
+    assert payload["bindings2_ramptype"] == "vector"
+    assert node_obj.parm("bindings1_ramp").last_expression == 'ch("./curve")'
+    assert node_obj.parm("bindings2_ramp_rgb").last_expression == 'ch("./colors")'
+    assert result["data"]["spare_parms"] == ["curve", "colors"]
+    assert result["data"]["bindings_only"] is False
+    folder = node_obj._group.entries()[0]
+    assert folder.name() == "folder_generatedparms_kernelcode"
+    assert [child.name() for child in folder.parmTemplates()] == ["curve", "colors"]
 
 
 def test_handle_sync_can_preserve_generated_spare_expression(monkeypatch) -> None:

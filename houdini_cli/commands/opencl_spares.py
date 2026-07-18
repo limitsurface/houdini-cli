@@ -6,7 +6,7 @@ from typing import Any
 
 from ..transport.rpyc import localize
 
-SPARE_PARM_BINDING_TYPES = {"int", "float", "float2", "float3", "float4"}
+SPARE_PARM_BINDING_TYPES = {"int", "float", "float2", "float3", "float4", "ramp"}
 
 
 def _binding_scalar(binding: Any, key: str) -> Any:
@@ -65,6 +65,19 @@ def _spare_parm_template(session: Any, binding: Any) -> Any:
             label,
             4,
             default_value=tuple(_binding_vector(binding, "v4val", 4)),
+        )
+    if binding_type == "ramp":
+        ramp_type = (
+            session.hou.rampParmType.Color
+            if str(_binding_scalar(binding, "ramptype")) == "vector"
+            else session.hou.rampParmType.Float
+        )
+        return session.hou.RampParmTemplate(
+            name,
+            label,
+            ramp_type,
+            default_value=2,
+            default_basis=session.hou.rampBasis.Linear,
         )
     raise ValueError(f"Unsupported spare parm binding type: {binding_type}")
 
@@ -142,6 +155,19 @@ def _capture_spare_parm_state(opencl_node: Any, bindings: list[Any]) -> dict[str
                 continue
             state: dict[str, Any] = {}
             try:
+                is_ramp = str(localize(parm.parmTemplate().type().name())) == "Ramp"
+            except Exception:
+                is_ramp = False
+            if is_ramp:
+                ramp = parm.eval()
+                state["ramp"] = {
+                    "basis": [str(localize(item.name())) for item in ramp.basis()],
+                    "keys": [float(item) for item in ramp.keys()],
+                    "values": list(localize(ramp.values())),
+                }
+                states[name] = state
+                continue
+            try:
                 state["expression"] = parm.expression()
             except Exception:
                 try:
@@ -157,10 +183,15 @@ def _capture_spare_parm_state(opencl_node: Any, bindings: list[Any]) -> dict[str
     return states
 
 
-def _restore_spare_parm_state(opencl_node: Any, states: dict[str, dict[str, Any]]) -> None:
+def _restore_spare_parm_state(session: Any, opencl_node: Any, states: dict[str, dict[str, Any]]) -> None:
     for name, state in states.items():
         parm = opencl_node.parm(name)
         if parm is None:
+            continue
+        if "ramp" in state:
+            ramp = state["ramp"]
+            basis = tuple(getattr(session.hou.rampBasis, item) for item in ramp["basis"])
+            parm.set(session.hou.Ramp(basis, tuple(ramp["keys"]), tuple(ramp["values"])))
             continue
         if "expression" in state:
             try:
@@ -182,7 +213,7 @@ def sync_spare_parms_preserving_values(
     states = _capture_spare_parm_state(opencl_node, bindings) if preserve else {}
     spare_parms = _sync_spare_parms(session, opencl_node, bindings)
     if states:
-        _restore_spare_parm_state(opencl_node, states)
+        _restore_spare_parm_state(session, opencl_node, states)
     return spare_parms
 
 
@@ -232,3 +263,6 @@ def link_binding_value_parms(opencl_node: Any, bindings: list[Any]) -> None:
                     f"{prefix}v4val{component}",
                     f'ch("./{spare_name}{component}")',
                 )
+        elif binding_type == "ramp":
+            suffix = "ramp_rgb" if str(_binding_scalar(binding, "ramptype")) == "vector" else "ramp"
+            set_binding_value_expression(opencl_node, f"{prefix}{suffix}", f'ch("./{spare_name}")')

@@ -62,6 +62,9 @@ def binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
         values[f"{prefix}v3val"] = binding_vector(binding, "v3val", 3)
     elif binding_type == "float4":
         values[f"{prefix}v4val"] = binding_vector(binding, "v4val", 4)
+    elif binding_type == "ramp":
+        values[f"{prefix}rampsize"] = int(binding_scalar(binding, "rampsize"))
+        values[f"{prefix}ramptype"] = str(binding_scalar(binding, "ramptype"))
 
     return values
 
