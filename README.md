@@ -49,10 +49,7 @@ Create a Houdini shelf tool and paste in the Python from [shelf_script/start_hrp
 ## Local Houdini Docs
 
 The bundled skill and local Houdini product docs are required for agents to use
-the CLI and verify Houdini APIs and node behavior. Extracted SideFX help content
-is proprietary: keep `help_prepared/` local and do not commit, publish, or
-redistribute it. This repository ignores `help_prepared/` and temporary renamed
-prepared-help corpuses.
+the CLI and verify Houdini APIs and node behavior.
 
 The agent installing the CLI should complete this setup:
 
