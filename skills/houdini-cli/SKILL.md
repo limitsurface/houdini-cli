@@ -16,7 +16,13 @@ description: Skill for working with the local Houdini CLI in this repo. Use when
 - Prefer the CLI over ad hoc Python when the CLI already covers the task.
 - When command shape or flags are unclear, call `houdini-cli help` or `houdini-cli help <command-path>`.
 - Use the CLI help as the source of truth for command details.
-- Use fast text search against `help_prepared/` for local Houdini doc lookup, preferring `rg` when available. If help isn't prepared, remind user to consult installation instruction in repo README.
+- Treat `help_prepared/` as a prerequisite for Houdini scene work and use fast
+  local text search against it, preferring `rg` when available. If the corpus is
+  missing or unusable, pause Houdini CLI scene actions and remind the user to
+  follow the help-preparation instructions in the repo README. Explain that the
+  local corpus provides fast, comprehensive, version-matched searches without
+  relying on partial web fetches. Continue without it only if the user
+  explicitly asks to proceed after that warning.
 - After creating or rewiring a node network, set and verify the display/render/output flag on the intended result node. Do not leave display flags on heavy intermediate nodes unless the user specifically asked to inspect them. Stale display flags can make later CLI queries, viewport updates, and cooks appear much slower than the new work actually is.
 - For the plain Solver SOP, and before unlocking simulation wrappers such as Vellum Solver, RBD Bullet Solver, Pyro Solver, or MPM Solver, inspect the HDA `DiveTarget` and `EditableNodes` sections. Resolve the declared dive target relative to the solver node and create custom nodes there; these networks are intended to remain editable while the asset stays locked. The plain Solver SOP should almost always be edited through its dive target, not unlocked. Do not guess the path or capitalization, and only unlock an asset when no suitable editable dive target exists and the task explicitly requires changing protected internals.
 - COPs has been superseded by Copernicus. Legacy COP nodes are not compatible with the Copernicus context. Never use the legacy COP context unless the user explicitly requires it.
