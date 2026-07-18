@@ -111,6 +111,24 @@ space.
 Use optional bindings and defaults when simulation data may be absent.
 Required missing data prevents the microsolver from running.
 
+In Houdini 22 and newer, readable geometry attribute rows also support the
+same mutually exclusive BVH modes as OpenCL SOPs. See the bundled
+[SideFX OpenCL attribute binding methods](../help_prepared/vex/ocl.txt#attribute-binding-methods)
+for the authoritative query signatures and binding constraints.
+
+```c
+#bind point collisionP name=P float3 geometry=Geometry bvh
+#bind point particlesP name=P float3 geometry=Geometry pointbvh
+#bind point activeP name=P float3 geometry=Geometry pointbvh pointbvhmask=active
+```
+
+Use `bvh` for triangle-surface proximity and `pointbvh` for point-cloud
+queries. Surface bindings require a point or vertex `float3`; point BVHs
+require a point `float3`. A point mask names an integer point attribute and is
+valid only with `pointbvh`. Mask values written by an earlier GPU kernel are
+flushed before BVH construction, including inside a compile block. Surface
+BVHs ignore primitives that are not already triangles.
+
 ## Data Options
 
 The Gas OpenCL parameter schema supports option values from named simulation

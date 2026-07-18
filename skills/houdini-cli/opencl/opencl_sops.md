@@ -88,6 +88,65 @@ Scalar assignment is also common in shipped kernels:
 @stiffness = mix(@start_stiffness, @end_stiffness, @time);
 ```
 
+## Houdini 22 BVH Attribute Queries
+
+Houdini 22 adds accelerated spatial queries to readable `float3` geometry
+attribute bindings. The two acceleration modes are mutually exclusive. See
+the bundled [SideFX OpenCL attribute binding methods](../help_prepared/vex/ocl.txt#attribute-binding-methods)
+for the authoritative signatures and constraints.
+
+```c
+#bind point surfaceP name=P float3 input=1 bvh
+#bind point cloudP name=P float3 input=1 pointbvh
+#bind point maskedP name=P float3 input=1 pointbvh pointbvhmask=active
+```
+
+- `bvh` builds a surface BVH from input triangles. The binding may be a point
+  or vertex `float3` attribute.
+- `pointbvh` builds one leaf per point and requires a point `float3` attribute.
+- `pointbvhmask=<attribute>` is valid only with `pointbvh`. The named integer
+  point attribute includes points whose value is nonzero.
+- Do not put `bvh` and `pointbvh` on the same binding. Although both node
+  toggles can be enabled, SideFX defines the modes as incompatible.
+- These modifiers require Houdini 22 or newer. The CLI rejects them in older
+  Houdini sessions before changing the node interface.
+
+Surface BVH methods are `xyzdist`, `xyzdist_max`, `minpos`, `minpos_max`,
+`closest_idx`, and `closest_idx_max`. Point BVH methods are `nearpoint`,
+`nearpoint_max`, `nearpoints`, `minpos`, and `minpos_max`.
+
+Important return-value details:
+
+- `xyzdist` returns the closest position, not a distance. It writes the BVH
+  triangle-list index and barycentric `(u, v, w)` coordinates.
+- `closest_idx` returns triangle corner `0`, `1`, or `2`; it does not return a
+  Houdini point number.
+- `nearpoint` returns a point number and writes Euclidean distance.
+- `nearpoints` returns the number of matches and writes point numbers plus
+  squared distances, ordered nearest first. Allocate both arrays to size `k`.
+- A failed surface `_max` query writes triangle index `-1` and returns zero
+  position. A failed point `nearpoint_max` returns `-1` and leaves distance at
+  the supplied maximum.
+
+Surface construction does not triangulate. Only primitives that are already
+triangles enter the BVH; quads and n-gons are ignored. Its triangle index
+matches a Houdini primitive number only when every primitive is a triangle.
+Triangulate explicitly when primitive correspondence matters.
+
+A minimal surface projection uses the query position from the first input and
+the BVH built from the second input:
+
+```c
+#bind point &P float3
+#bind point surfaceP name=P float3 input=1 bvh
+
+@KERNEL
+{
+    float3 projected = @surfaceP.minpos(@P);
+    @P.set(projected);
+}
+```
+
 ## Multiple Geometry Inputs
 
 Native Otis kernels use aliases to read matching attributes from other SOP

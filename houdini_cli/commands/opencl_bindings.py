@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..transport.rpyc import localize
@@ -10,6 +11,109 @@ from .opencl_spares import SPARE_PARM_BINDING_TYPES, link_binding_value_parms, s
 
 def binding_scalar(binding: Any, key: str) -> Any:
     return localize(binding[key])
+
+
+def binding_value(binding: Any, key: str, default: Any) -> Any:
+    try:
+        return localize(binding[key])
+    except (KeyError, TypeError):
+        return default
+
+
+_BIND_DIRECTIVE_RE = re.compile(r"(?m)^[ \t]*#bind\b([^\r\n]*)")
+_BVH_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:pointbvhmask\s*=\s*[^\s/]+|nopointbvh|pointbvh|nobvh|bvh)"
+)
+
+
+def enrich_bvh_bindings(kernel_code: str, bindings: list[Any]) -> list[Any]:
+    """Restore H22 BVH modifiers omitted by hou.text.oclExtractBindings()."""
+    directives = _BIND_DIRECTIVE_RE.findall(kernel_code)
+    enriched: list[Any] = []
+    for index, binding in enumerate(bindings):
+        row = dict(binding)
+        row.setdefault("bvh", False)
+        row.setdefault("pointbvh", False)
+        row.setdefault("pointbvhmask", "")
+        if index < len(directives) and str(row.get("type", "")) == "attribute":
+            source = directives[index].split("//", 1)[0]
+            bvh = False
+            pointbvh = False
+            pointbvhmask = ""
+            for match in _BVH_TOKEN_RE.finditer(source):
+                token = match.group(0)
+                compact = re.sub(r"\s+", "", token)
+                if compact == "bvh":
+                    bvh = True
+                elif compact == "nobvh":
+                    bvh = False
+                elif compact == "pointbvh":
+                    pointbvh = True
+                elif compact == "nopointbvh":
+                    pointbvh = False
+                elif compact.startswith("pointbvhmask="):
+                    pointbvhmask = compact.split("=", 1)[1]
+            row["bvh"] = bvh
+            row["pointbvh"] = pointbvh
+            row["pointbvhmask"] = pointbvhmask
+        enriched.append(row)
+    return enriched
+
+
+def bvh_summary(binding: Any) -> dict[str, Any]:
+    return {
+        "bvh": bool(binding_value(binding, "bvh", False)),
+        "pointbvh": bool(binding_value(binding, "pointbvh", False)),
+        "pointbvhmask": str(binding_value(binding, "pointbvhmask", "")),
+    }
+
+
+def accelerated_binding_summaries(bindings: list[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for binding in bindings:
+        accel = bvh_summary(binding)
+        if not any(accel.values()):
+            continue
+        mode = "surface_bvh" if accel["bvh"] else "point_bvh" if accel["pointbvh"] else "none"
+        row = {"name": str(binding_scalar(binding, "name")), "mode": mode}
+        if accel["pointbvhmask"]:
+            row["point_mask"] = accel["pointbvhmask"]
+        rows.append(row)
+    return rows
+
+
+def preflight_bvh_bindings(session: Any, opencl_node: Any, bindings: list[Any]) -> None:
+    accelerated = [binding for binding in bindings if any(bvh_summary(binding).values())]
+    if not accelerated:
+        return
+
+    try:
+        major = int(localize(session.hou.applicationVersion())[0])
+    except Exception:
+        major = 22
+    if major < 22:
+        raise ValueError("OpenCL BVH attribute bindings require Houdini 22 or newer.")
+
+    for binding in accelerated:
+        name = str(binding_scalar(binding, "name"))
+        accel = bvh_summary(binding)
+        if accel["bvh"] and accel["pointbvh"]:
+            raise ValueError(f"OpenCL binding {name!r} cannot combine bvh and pointbvh.")
+        if str(binding_scalar(binding, "type")) != "attribute":
+            raise ValueError(f"OpenCL BVH binding {name!r} must be an attribute binding.")
+        if not bool(binding_scalar(binding, "readable")):
+            raise ValueError(f"OpenCL BVH binding {name!r} must be readable.")
+        attribclass = str(binding_scalar(binding, "attribclass"))
+        attribtype = str(binding_scalar(binding, "attribtype"))
+        attribsize = int(binding_scalar(binding, "attribsize"))
+        if attribtype != "float" or attribsize != 3:
+            raise ValueError(f"OpenCL BVH binding {name!r} must be a float3 attribute.")
+        if accel["bvh"] and attribclass not in {"point", "vertex"}:
+            raise ValueError(f"Surface BVH binding {name!r} must use a point or vertex attribute.")
+        if accel["pointbvh"] and attribclass != "point":
+            raise ValueError(f"Point BVH binding {name!r} must use a point attribute.")
+        if accel["pointbvhmask"] and not accel["pointbvh"]:
+            raise ValueError(f"OpenCL binding {name!r} uses pointbvhmask without pointbvh.")
 
 
 def binding_vector(binding: Any, key: str, size: int) -> list[float]:
@@ -41,6 +145,10 @@ def binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
         values[f"{prefix}attribclass"] = str(binding_scalar(binding, "attribclass"))
         values[f"{prefix}attribtype"] = str(binding_scalar(binding, "attribtype"))
         values[f"{prefix}attribsize"] = int(binding_scalar(binding, "attribsize"))
+        accel = bvh_summary(binding)
+        values[f"{prefix}attribbvh"] = accel["bvh"]
+        values[f"{prefix}attribpointbvh"] = accel["pointbvh"]
+        values[f"{prefix}attribpointbvhmask"] = accel["pointbvhmask"]
     elif binding_type == "volume":
         values[f"{prefix}input"] = int(binding_scalar(binding, "input"))
         values[f"{prefix}volume"] = str(binding_scalar(binding, "volume"))
@@ -157,6 +265,8 @@ def compact_validation(validation: dict[str, Any], bindings: list[Any]) -> dict[
     for key in ("errors", "warnings", "messages", "hints"):
         if validation.get(key):
             result[key] = validation[key]
+    if validation.get("accelerated_bindings"):
+        result["accelerated_bindings"] = validation["accelerated_bindings"]
     return result
 
 def node_messages(opencl_node: Any) -> dict[str, list[str]]:
@@ -192,6 +302,15 @@ def binding_row_summary(opencl_node: Any) -> list[dict[str, Any]]:
                 {
                     "name": str(name_parm.evalAsString()),
                     "type": str(type_parm.evalAsString()),
+                    "bvh": bool(opencl_node.parm(f"bindings{index}_attribbvh").eval())
+                    if opencl_node.parm(f"bindings{index}_attribbvh") is not None
+                    else False,
+                    "pointbvh": bool(opencl_node.parm(f"bindings{index}_attribpointbvh").eval())
+                    if opencl_node.parm(f"bindings{index}_attribpointbvh") is not None
+                    else False,
+                    "pointbvhmask": str(opencl_node.parm(f"bindings{index}_attribpointbvhmask").evalAsString())
+                    if opencl_node.parm(f"bindings{index}_attribpointbvhmask") is not None
+                    else "",
                 }
             )
         except Exception:
@@ -204,6 +323,7 @@ def desired_binding_row_summary(bindings: list[Any]) -> list[dict[str, Any]]:
         {
             "name": str(binding_scalar(binding, "name")),
             "type": str(binding_scalar(binding, "type")),
+            **bvh_summary(binding),
         }
         for binding in bindings
     ]

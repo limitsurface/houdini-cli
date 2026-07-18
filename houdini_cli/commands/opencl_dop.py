@@ -7,6 +7,7 @@ from typing import Any
 from ..transport.rpyc import localize
 from .opencl_bindings import (
     binding_scalar,
+    bvh_summary,
     binding_vector,
     desired_binding_row_summary,
     node_messages,
@@ -50,6 +51,10 @@ def dop_binding_parm_values(index: int, binding: Any) -> dict[str, Any]:
         values[f"{prefix}Class"] = str(binding_scalar(binding, "attribclass"))
         values[f"{prefix}AttributeType"] = str(binding_scalar(binding, "attribtype"))
         values[f"{prefix}AttributeSize"] = int(binding_scalar(binding, "attribsize"))
+        accel = bvh_summary(binding)
+        values[f"{prefix}BuildBVH"] = accel["bvh"]
+        values[f"{prefix}BuildPointBVH"] = accel["pointbvh"]
+        values[f"{prefix}PointBVHMask"] = accel["pointbvhmask"]
     elif binding_type == "volume":
         values[f"{prefix}Geometry"] = str(binding_scalar(binding, "geometry"))
         values[f"{prefix}Volume"] = str(binding_scalar(binding, "volume"))
@@ -101,6 +106,15 @@ def dop_binding_row_summary(opencl_node: Any) -> list[dict[str, Any]]:
             {
                 "name": str(name_parm.evalAsString()),
                 "type": str(type_parm.evalAsString()),
+                "bvh": bool(opencl_node.parm(f"parameter{index}BuildBVH").eval())
+                if opencl_node.parm(f"parameter{index}BuildBVH") is not None
+                else False,
+                "pointbvh": bool(opencl_node.parm(f"parameter{index}BuildPointBVH").eval())
+                if opencl_node.parm(f"parameter{index}BuildPointBVH") is not None
+                else False,
+                "pointbvhmask": str(opencl_node.parm(f"parameter{index}PointBVHMask").evalAsString())
+                if opencl_node.parm(f"parameter{index}PointBVHMask") is not None
+                else "",
             }
         )
     return rows

@@ -323,6 +323,56 @@ Border behavior follows the source layer's border mode. Explicitly clamp when th
 
 Use `@points.len` for the element count and `@points(i)` for indexed access. Avoid naming an attribute binding `P` when the global `@P` binding is active; use an alias such as `geoP`.
 
+### Houdini 22 Geometry BVHs
+
+OpenCL COP geometry inputs can use Houdini 22's accelerated surface and point
+queries. Keep the geometry position binding distinct from Copernicus image
+space `@P`. See the bundled
+[SideFX OpenCL attribute binding methods](../help_prepared/vex/ocl.txt#attribute-binding-methods)
+for the authoritative query signatures and binding constraints.
+
+```c
+#bind point surfaceP name=P float3 port=geo bvh
+#bind point cloudP name=P float3 port=points pointbvh
+#bind point activeP name=P float3 port=points pointbvh pointbvhmask=active
+```
+
+Use surface `bvh` for closest positions and triangle/barycentric queries, and
+`pointbvh` for nearest-point and k-nearest-point queries. They cannot be
+combined on one binding. These are useful for distance-field generation,
+geometry-aware rasterization, Voronoi effects, and projecting image samples
+against geometry without a linear scan.
+
+The query origin must be expressed in the same coordinate space as the bound
+geometry attribute. Copernicus `@P` is centered aspect-aware image space, not
+automatically SOP object or world space; transform it or bind/query a position
+already expressed in the intended space.
+
+For geometry authored in the same centered XY space as the image, this creates
+a mono layer containing the distance from each pixel's XY position at
+`query_z` to the closest point on a triangulated surface:
+
+```c
+#bind point surfaceP name=P float3 port=geo bvh
+#bind parm query_z float val=1.5
+#bind layer !&distance float
+
+@KERNEL
+{
+    float3 query = (float3)(@P.x, @P.y, @query_z);
+    float3 closest = @surfaceP.minpos(query);
+    @distance.set(length(query - closest));
+}
+```
+
+Transform the bound geometry or construct `query` differently when the SOP
+positions are not already in that shared coordinate space.
+
+Surface BVHs contain only primitives already made of exactly three vertices;
+there is no automatic triangulation. Point masks are read while the BVH is
+built. If a preceding GPU kernel writes the mask in a compile block, Houdini
+flushes that pending write before construction so the updated mask is used.
+
 ### Rank Selection
 
 For small parallel sorts:

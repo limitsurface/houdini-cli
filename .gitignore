@@ -9,4 +9,5 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .tmp/
-skills/houdini-cli/help_prepared/
+# Extracted SideFX documentation must never be committed.
+skills/houdini-cli/help_prepared*/

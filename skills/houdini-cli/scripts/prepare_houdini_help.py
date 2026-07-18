@@ -9,11 +9,25 @@ from pathlib import Path
 
 
 ARCHIVES_TO_EXTRACT = [
+    "anim",
+    "assets",
+    "character",
+    "dyno",
+    "finiteelements",
+    "fur",
+    "hapi",
     "help",
     "hom",
+    "hqueue",
+    "io",
+    "model",
+    "mplay",
     "nodes",
     "network",
+    "shelf",
+    "tops",
     "vex",
+    "visualizers",
     "commands",
     "ref",
     "crowds",
@@ -32,6 +46,8 @@ ARCHIVES_TO_EXTRACT = [
 DIRECTORIES_TO_COPY = [
     "copernicus",
     "heightfields",
+    "heightfields_cop",
+    "hwebserver",
     "ml",
     "mpm",
 ]

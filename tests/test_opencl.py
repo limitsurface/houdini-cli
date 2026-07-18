@@ -1,6 +1,6 @@
 from argparse import Namespace
 
-from houdini_cli.commands import opencl, opencl_cop, opencl_spares
+from houdini_cli.commands import opencl, opencl_bindings, opencl_cop, opencl_dop, opencl_spares
 
 
 class FakeParm:
@@ -425,6 +425,9 @@ def _binding(**kwargs):
         "attribclass": "detail",
         "attribtype": "float",
         "attribsize": 1,
+        "bvh": False,
+        "pointbvh": False,
+        "pointbvhmask": "",
         "volume": "",
         "resolution": False,
         "voxelsize": False,
@@ -439,6 +442,138 @@ def _binding(**kwargs):
     }
     base.update(kwargs)
     return base
+
+
+def test_enrich_bvh_bindings_restores_modifiers_omitted_by_hom() -> None:
+    bindings = [
+        _binding(name="surface", type="attribute", attribclass="point", attribsize=3),
+        _binding(name="cloud", type="attribute", attribclass="point", attribsize=3),
+    ]
+    code = (
+        "#bind point surface name=P float3 bvh\n"
+        "#bind point cloud name=P float3 pointbvh pointbvhmask=active\n"
+    )
+
+    enriched = opencl_bindings.enrich_bvh_bindings(code, bindings)
+
+    assert enriched[0]["bvh"] is True
+    assert enriched[0]["pointbvh"] is False
+    assert enriched[1]["pointbvh"] is True
+    assert enriched[1]["pointbvhmask"] == "active"
+
+
+def test_enrich_bvh_bindings_honours_negative_modifiers() -> None:
+    binding = _binding(name="cloud", type="attribute", attribclass="point", attribsize=3)
+    enriched = opencl_bindings.enrich_bvh_bindings(
+        "#bind point cloud name=P float3 bvh nobvh pointbvh nopointbvh\n",
+        [binding],
+    )
+    assert opencl_bindings.bvh_summary(enriched[0]) == {
+        "bvh": False,
+        "pointbvh": False,
+        "pointbvhmask": "",
+    }
+
+
+def test_preflight_rejects_combined_bvh_modes() -> None:
+    node_obj = FakeSopOpenclNode()
+    session = FakeSession(node_obj, [])
+    binding = _binding(
+        name="P",
+        type="attribute",
+        attribclass="point",
+        attribtype="float",
+        attribsize=3,
+        bvh=True,
+        pointbvh=True,
+    )
+
+    try:
+        opencl_bindings.preflight_bvh_bindings(session, node_obj, [binding])
+    except ValueError as exc:
+        assert "cannot combine bvh and pointbvh" in str(exc)
+    else:
+        raise AssertionError("Combined BVH modes should be rejected")
+
+
+def test_preflight_rejects_bvh_before_houdini_22() -> None:
+    node_obj = FakeSopOpenclNode()
+    session = FakeSession(node_obj, [])
+    session.applicationVersion = lambda: (21, 0, 729)
+    binding = _binding(
+        name="P",
+        type="attribute",
+        attribclass="point",
+        attribtype="float",
+        attribsize=3,
+        bvh=True,
+    )
+
+    try:
+        opencl_bindings.preflight_bvh_bindings(session, node_obj, [binding])
+    except ValueError as exc:
+        assert "require Houdini 22 or newer" in str(exc)
+    else:
+        raise AssertionError("Houdini 21 should reject BVH bindings")
+
+
+def test_bvh_values_are_written_for_sop_and_dop_rows() -> None:
+    binding = _binding(
+        name="cloud",
+        type="attribute",
+        attribclass="point",
+        attribtype="float",
+        attribsize=3,
+        pointbvh=True,
+        pointbvhmask="active",
+    )
+
+    sop_values = opencl_bindings.binding_parm_values(1, binding)
+    dop_values = opencl_dop.dop_binding_parm_values(1, binding)
+
+    assert sop_values["bindings1_attribpointbvh"] is True
+    assert sop_values["bindings1_attribpointbvhmask"] == "active"
+    assert dop_values["parameter1BuildPointBVH"] is True
+    assert dop_values["parameter1PointBVHMask"] == "active"
+
+
+def test_binding_row_summary_detects_bvh_drift() -> None:
+    node_obj = FakeSopOpenclNode()
+    node_obj.setParms(
+        {
+            "bindings": 1,
+            "bindings1_name": "surface",
+            "bindings1_type": "attribute",
+            "bindings1_attribbvh": False,
+            "bindings1_attribpointbvh": False,
+            "bindings1_attribpointbvhmask": "",
+        }
+    )
+    desired = _binding(
+        name="surface",
+        type="attribute",
+        attribclass="point",
+        attribtype="float",
+        attribsize=3,
+        bvh=True,
+    )
+
+    assert opencl_bindings.binding_row_summary(node_obj) != opencl_bindings.desired_binding_row_summary([desired])
+
+
+def test_accelerated_binding_summaries_report_mode_and_mask() -> None:
+    rows = opencl_bindings.accelerated_binding_summaries(
+        [
+            _binding(name="plain"),
+            _binding(name="surface", type="attribute", bvh=True),
+            _binding(name="cloud", type="attribute", pointbvh=True, pointbvhmask="active"),
+        ]
+    )
+
+    assert rows == [
+        {"name": "surface", "mode": "surface_bvh"},
+        {"name": "cloud", "mode": "point_bvh", "point_mask": "active"},
+    ]
 
 
 def test_handle_sync_rebuilds_signature_and_bindings(monkeypatch) -> None:

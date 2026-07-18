@@ -9,11 +9,14 @@ from ..format.envelopes import success_result
 from ..transport.rpyc import connect, localize
 from .node_common import get_node
 from .opencl_bindings import (
+    accelerated_binding_summaries,
     binding_scalar,
     compact_validation,
+    enrich_bvh_bindings,
     is_cop_opencl,
     opencl_context,
     preflight_binding_types,
+    preflight_bvh_bindings,
     safe_cook,
 )
 from .opencl_cop import (
@@ -136,6 +139,7 @@ def _validation_summary(
         )
     else:
         raise ValueError(f"Unsupported OpenCL context: {context}")
+    result["accelerated_bindings"] = accelerated_binding_summaries(bindings)
     bad_refs = [
         message
         for message in result.get("warnings", [])
@@ -178,12 +182,13 @@ def handle_sync(args: argparse.Namespace) -> dict:
             raise ValueError(f"Node is not an OpenCL node: {args.node_path}")
 
         kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
-        bindings = list(session.hou.text.oclExtractBindings(kernel_code))
+        bindings = enrich_bvh_bindings(kernel_code, list(session.hou.text.oclExtractBindings(kernel_code)))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
 
         if not kernel_code.strip():
             raise ValueError("Kernel Code is empty; OpenCL sync does not rebuild external-kernel interfaces.")
         preflight_binding_types(opencl_node, bindings)
+        preflight_bvh_bindings(session, opencl_node, bindings)
         usecode = opencl_node.parm("usecode")
         if usecode is not None and not bool(usecode.eval()):
             usecode.set(True)
@@ -244,8 +249,9 @@ def handle_validate(args: argparse.Namespace) -> dict:
             raise ValueError(f"Node is not an OpenCL node: {args.node_path}")
 
         kernel_code = localize(opencl_node.parm("kernelcode").evalAsString())
-        bindings = list(session.hou.text.oclExtractBindings(kernel_code))
+        bindings = enrich_bvh_bindings(kernel_code, list(session.hou.text.oclExtractBindings(kernel_code)))
         runover = str(localize(session.hou.text.oclExtractRunOver(kernel_code)))
+        preflight_bvh_bindings(session, opencl_node, bindings)
         safe_cook(opencl_node)
         current_state = (
             cop_validation_state_in_houdini(session, args.node_path)
