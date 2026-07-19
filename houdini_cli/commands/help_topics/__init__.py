@@ -15,6 +15,7 @@ from .nodetype import NODETYPE_TOPIC
 from .recipe import RECIPE_TOPIC
 from .python import PYTHON_TOPIC
 from .lop import LOP_TOPIC
+from .xfer import XFER_TOPIC
 
 HELP_TREE = {
     "ping": PING_TOPIC,
@@ -32,4 +33,5 @@ HELP_TREE = {
     "recipe": RECIPE_TOPIC,
     "python": PYTHON_TOPIC,
     "lop": LOP_TOPIC,
+    "xfer": XFER_TOPIC,
 }

@@ -23,6 +23,7 @@ from .commands import recipe
 from .commands import shelf
 from .commands import session
 from .commands import wrangle
+from .commands import xfer
 from .format.envelopes import error_result
 from .runtime.logging import configure_logging
 
@@ -57,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     nodetype.register_parser(subparsers)
     recipe.register_parser(subparsers)
     wrangle.register_parser(subparsers)
+    xfer.register_parser(subparsers)
 
     return parser
 

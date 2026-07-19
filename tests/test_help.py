@@ -11,7 +11,7 @@ def test_handle_help_root() -> None:
     result = help_command.handle_help(Namespace(command_path=[]))
 
     assert result["ok"] is True
-    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "lop", "node", "nodetype", "opencl", "parm", "ping", "python", "recipe", "session", "shelf", "wrangle"]
+    assert result["data"]["commands"] == ["attrib", "cop", "eval", "hda", "lop", "node", "nodetype", "opencl", "parm", "ping", "python", "recipe", "session", "shelf", "wrangle", "xfer"]
     assert "opencl" in result["data"]["command_descriptions"]
     assert "OpenCL" in result["data"]["command_descriptions"]["opencl"]
     assert "stdout is JSON" in result["data"]["rules"]
@@ -326,6 +326,23 @@ def test_handle_help_cop_export_image_mentions_orientation() -> None:
     assert result["ok"] is True
     assert "--mode raw|view" in result["data"]["usage"]
     assert any("map Y" in note for note in result["data"]["notes"])
+
+
+def test_handle_help_xfer_routes_ordinary_inspection_to_bounded_tools() -> None:
+    result = help_command.handle_help(Namespace(command_path=["xfer"]))
+
+    assert result["data"]["subcommands"] == ["copy", "export", "import"]
+    notes = " ".join(result["data"]["notes"])
+    assert "never returned over RPyC" in notes
+    assert "node summary" in notes
+
+
+def test_handle_help_xfer_export_documents_broad_capture_flags() -> None:
+    result = help_command.handle_help(Namespace(command_path=["xfer", "export"]))
+
+    assert "--children" in result["data"]["usage"]
+    assert "--all-parms" in result["data"]["usage"]
+    assert "exceptional offline inspection" in " ".join(result["data"]["notes"])
 
 
 def test_handle_help_missing_topic_raises() -> None:
