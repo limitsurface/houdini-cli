@@ -343,6 +343,7 @@ def test_handle_help_xfer_export_documents_broad_capture_flags() -> None:
     assert "--children" in result["data"]["usage"]
     assert "--all-parms" in result["data"]["usage"]
     assert "exceptional offline inspection" in " ".join(result["data"]["notes"])
+    assert "unlocked asset contents require --children" in result["data"]["notes"]
 
 
 def test_handle_help_missing_topic_raises() -> None:

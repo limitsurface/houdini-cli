@@ -14,6 +14,7 @@ XFER_TOPIC = {
             "notes": [
                 "use broad exports only for explicit transfer or exceptional offline inspection",
                 "--children recurses into subnets and unlocked assets; --editables includes editable asset contents",
+                "unlocked asset contents require --children",
                 "--all-parms includes default-valued parameters",
             ],
         },
@@ -32,6 +33,7 @@ XFER_TOPIC = {
             "[--all-parms] [--editables]",
             "notes": [
                 "requires source and destination sessions to share filesystem access",
+                "unlocked asset contents require --children",
                 "returns bounded transfer status without returning network contents",
             ],
         },

@@ -1,11 +1,14 @@
 from argparse import Namespace
 import os
+import sys
+from types import SimpleNamespace
 
 import pytest
 
 from houdini_cli.commands import xfer
 from houdini_cli.main import build_parser
 from houdini_cli.remote.xfer import XFER_REMOTE
+from houdini_cli.remote.xfer import XFER_REMOTE_SOURCE
 
 
 def test_parser_registers_xfer_commands_and_capture_flags() -> None:
@@ -42,6 +45,42 @@ def test_remote_xfer_calls_only_pass_paths_and_scalar_options() -> None:
     assert XFER_REMOTE.call(
         "import", "D:/tmp/network.json", "/obj", "copy", False
     ) == "_houdini_cli_xfer_import('D:/tmp/network.json', '/obj', 'copy', False)"
+
+
+def test_remote_export_requires_children_for_unlocked_asset(monkeypatch, tmp_path) -> None:
+    class FakeType:
+        def definition(self):
+            return object()
+
+    class FakeNode:
+        def type(self):
+            return FakeType()
+
+        def matchesCurrentDefinition(self):
+            return False
+
+        def path(self):
+            return "/obj/geo1/unlocked_asset"
+
+    fake_hou = SimpleNamespace(node=lambda path: FakeNode())
+    monkeypatch.setitem(sys.modules, "hou", fake_hou)
+    namespace = {}
+    exec(XFER_REMOTE_SOURCE, namespace)
+
+    result = namespace["_houdini_cli_xfer_export"](
+        "/obj/geo1/unlocked_asset",
+        str(tmp_path / "artifact.json"),
+        False,
+        False,
+        False,
+        False,
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "Unlocked asset contents require --children: /obj/geo1/unlocked_asset",
+    }
+    assert not (tmp_path / "artifact.json").exists()
 
 
 def test_export_rejects_stdout_artifact_path() -> None:

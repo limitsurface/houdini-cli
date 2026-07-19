@@ -38,6 +38,12 @@ def _houdini_cli_xfer_export(node_path, output_path, children, all_parms, editab
     node = hou.node(node_path)
     if node is None:
         return {"ok": False, "error": "Node not found: " + node_path}
+    definition = node.type().definition()
+    if definition is not None and not node.matchesCurrentDefinition() and not children:
+        return {
+            "ok": False,
+            "error": "Unlocked asset contents require --children: " + node.path(),
+        }
 
     resolved_output = _houdini_cli_xfer_expand_path(output_path)
     if os.path.exists(resolved_output) and not overwrite:
