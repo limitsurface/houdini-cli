@@ -1,6 +1,6 @@
 # houdini-cli
 
-This project is now largely superseded by The (Houdini Codemode MCP) [https://github.com/limitsurface/houdini-codemode-mcp]
+This project is now largely superseded by The (Houdini Codemode MCP)[https://github.com/limitsurface/houdini-codemode-mcp]
 
 Agent-oriented CLI for controlling a live Houdini session over `hrpyc` / `rpyc`.
 It provides a command-line alternative to Houdini MCP integrations.
